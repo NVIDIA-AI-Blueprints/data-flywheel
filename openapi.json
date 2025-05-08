@@ -1,0 +1,763 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "FastAPI",
+    "version": "0.1.0"
+  },
+  "paths": {
+    "/api/jobs": {
+      "get": {
+        "summary": "Get Jobs",
+        "description": "Get a list of all active and recent jobs.",
+        "operationId": "get_jobs_api_jobs_get",
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobsListResponse"
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create Job",
+        "description": "Create a new job that runs the NIM workflow.",
+        "operationId": "create_job_api_jobs_post",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/JobRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/jobs/{job_id}": {
+      "get": {
+        "summary": "Get Job",
+        "description": "Get the status and result of a job, including detailed information about all tasks in the workflow.",
+        "operationId": "get_job_api_jobs__job_id__get",
+        "parameters": [
+          {
+            "name": "job_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string",
+              "title": "Job Id"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Successful Response",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/JobDetailResponse"
+                }
+              }
+            }
+          },
+          "422": {
+            "description": "Validation Error",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "Customization": {
+        "properties": {
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "Timestamp when the customization started",
+            "examples": [
+              "2024-03-15T14:30:00Z"
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "Timestamp when the customization completed",
+            "examples": [
+              "2024-03-15T14:35:00Z"
+            ]
+          },
+          "runtime_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Runtime Seconds",
+            "description": "Time taken to complete the customization in seconds",
+            "examples": [
+              300.5
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "description": "Progress of the customization as a percentage",
+            "examples": [
+              100.0
+            ]
+          },
+          "epochs_completed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Epochs Completed",
+            "description": "Number of epochs completed",
+            "examples": [
+              10
+            ]
+          },
+          "steps_completed": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Steps Completed",
+            "description": "Number of steps completed",
+            "examples": [
+              100
+            ]
+          },
+          "nmp_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nmp Uri",
+            "description": "URI of the customization job in NMP",
+            "examples": [
+              "https://nmp.host/v1/customization/jobs/custom-123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "started_at",
+          "runtime_seconds",
+          "progress",
+          "epochs_completed",
+          "steps_completed"
+        ],
+        "title": "Customization",
+        "description": "Model representing a customization result for a NIM."
+      },
+      "Dataset": {
+        "properties": {
+          "name": {
+            "type": "string",
+            "title": "Name",
+            "description": "Name of the dataset",
+            "examples": [
+              "dataset_123"
+            ]
+          },
+          "num_records": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Num Records",
+            "description": "Number of records in the dataset",
+            "examples": [
+              1000
+            ]
+          },
+          "nmp_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nmp Uri",
+            "description": "URI of the dataset stored in NMP",
+            "examples": [
+              "https://nmp.host/v1/datasets/dataset-123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "name",
+          "num_records"
+        ],
+        "title": "Dataset",
+        "description": "Model representing a dataset."
+      },
+      "DeploymentStatus": {
+        "type": "string",
+        "enum": [
+          "created",
+          "pending",
+          "running",
+          "cancelled",
+          "cancelling",
+          "failed",
+          "completed",
+          "ready",
+          "unknown"
+        ],
+        "title": "DeploymentStatus",
+        "description": "Status details of the deployment."
+      },
+      "Evaluation": {
+        "properties": {
+          "eval_type": {
+            "type": "string",
+            "title": "Eval Type",
+            "description": "Type of evaluation performed",
+            "examples": [
+              "accuracy"
+            ]
+          },
+          "score": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Score",
+            "description": "Numeric score from the evaluation"
+          },
+          "function_name_and_args_accuracy": {
+            "anyOf": [
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Function Name And Args Accuracy",
+            "description": "Accuracy score for function name and arguments matching",
+            "examples": [
+              0.85
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "Timestamp when the evaluation started",
+            "examples": [
+              "2024-03-15T14:30:00Z"
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "Timestamp when the evaluation completed",
+            "examples": [
+              "2024-03-15T14:35:00Z"
+            ]
+          },
+          "runtime_seconds": {
+            "type": "number",
+            "minimum": 0.0,
+            "title": "Runtime Seconds",
+            "description": "Time taken to complete the evaluation in seconds",
+            "examples": [
+              300.5
+            ]
+          },
+          "progress": {
+            "type": "number",
+            "maximum": 100.0,
+            "minimum": 0.0,
+            "title": "Progress",
+            "description": "Progress of the evaluation as a percentage",
+            "examples": [
+              100.0
+            ]
+          },
+          "nmp_uri": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Nmp Uri",
+            "description": "URI of the evaluation job in NMP",
+            "examples": [
+              "https://nmp.host/v1/evaluation/jobs/eval-123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "eval_type",
+          "score",
+          "started_at",
+          "runtime_seconds",
+          "progress"
+        ],
+        "title": "Evaluation",
+        "description": "Model representing an evaluation result for a NIM."
+      },
+      "HTTPValidationError": {
+        "properties": {
+          "detail": {
+            "items": {
+              "$ref": "#/components/schemas/ValidationError"
+            },
+            "type": "array",
+            "title": "Detail"
+          }
+        },
+        "type": "object",
+        "title": "HTTPValidationError"
+      },
+      "JobDetailResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The unique identifier of the job",
+            "examples": [
+              "65f8a1b2c3d4e5f6a7b8c9d0"
+            ]
+          },
+          "workload_id": {
+            "type": "string",
+            "title": "Workload Id",
+            "description": "The unique identifier of the workload being processed",
+            "examples": [
+              "workload_123"
+            ]
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "The unique identifier of the client to process",
+            "example": "client_123"
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Current status of the job",
+            "examples": [
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "Timestamp when the job started processing",
+            "examples": [
+              "2024-03-15T14:30:00Z"
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "Timestamp when the job completed or failed",
+            "examples": [
+              "2024-03-15T15:30:00Z"
+            ]
+          },
+          "num_records": {
+            "type": "integer",
+            "minimum": 0.0,
+            "title": "Num Records",
+            "description": "Number of records processed in this job",
+            "examples": [
+              1000
+            ]
+          },
+          "llm_judge": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/LLMJudgeResponse"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "description": "LLM Judge status for this job"
+          },
+          "nims": {
+            "items": {
+              "$ref": "#/components/schemas/NIMResponse"
+            },
+            "type": "array",
+            "title": "Nims",
+            "description": "List of NIMs and their evaluation results for this job"
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/Dataset"
+            },
+            "type": "array",
+            "title": "Datasets",
+            "description": "List of datasets used in this job"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workload_id",
+          "client_id",
+          "status",
+          "started_at",
+          "num_records",
+          "nims"
+        ],
+        "title": "JobDetailResponse",
+        "description": "Detailed response model for a specific job."
+      },
+      "JobListItem": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The unique identifier of the job",
+            "examples": [
+              "65f8a1b2c3d4e5f6a7b8c9d0"
+            ]
+          },
+          "workload_id": {
+            "type": "string",
+            "title": "Workload Id",
+            "description": "The unique identifier of the workload being processed",
+            "examples": [
+              "workload_123"
+            ]
+          },
+          "client_id": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Id",
+            "description": "The unique identifier of the client to process",
+            "examples": [
+              "client_123"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "title": "Status",
+            "description": "Current status of the job",
+            "examples": [
+              "running",
+              "completed",
+              "failed"
+            ]
+          },
+          "started_at": {
+            "type": "string",
+            "format": "date-time",
+            "title": "Started At",
+            "description": "Timestamp when the job started processing",
+            "examples": [
+              "2024-03-15T14:30:00Z"
+            ]
+          },
+          "finished_at": {
+            "anyOf": [
+              {
+                "type": "string",
+                "format": "date-time"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Finished At",
+            "description": "Timestamp when the job completed or failed",
+            "examples": [
+              "2024-03-15T15:30:00Z"
+            ]
+          },
+          "datasets": {
+            "items": {
+              "$ref": "#/components/schemas/Dataset"
+            },
+            "type": "array",
+            "title": "Datasets",
+            "description": "List of datasets used in this job"
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "workload_id",
+          "status",
+          "started_at"
+        ],
+        "title": "JobListItem",
+        "description": "Model representing a job in the list of jobs."
+      },
+      "JobRequest": {
+        "properties": {
+          "workload_id": {
+            "type": "string",
+            "title": "Workload Id",
+            "description": "The unique identifier of the workload to process",
+            "examples": [
+              "workload_123"
+            ]
+          },
+          "client_id": {
+            "type": "string",
+            "title": "Client Id",
+            "description": "The unique identifier of the client to process",
+            "examples": [
+              "client_123"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "workload_id",
+          "client_id"
+        ],
+        "title": "JobRequest",
+        "description": "Request model for creating a new NIM workflow job."
+      },
+      "JobResponse": {
+        "properties": {
+          "id": {
+            "type": "string",
+            "title": "Id",
+            "description": "The unique identifier of the created job",
+            "examples": [
+              "65f8a1b2c3d4e5f6a7b8c9d0"
+            ]
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "queued",
+              "running",
+              "completed",
+              "failed"
+            ],
+            "title": "Status",
+            "description": "Current status of the job",
+            "examples": [
+              "queued"
+            ]
+          },
+          "message": {
+            "type": "string",
+            "title": "Message",
+            "description": "Human-readable message about the job status",
+            "examples": [
+              "NIM workflow started"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "id",
+          "status",
+          "message"
+        ],
+        "title": "JobResponse",
+        "description": "Response model for job creation."
+      },
+      "JobsListResponse": {
+        "properties": {
+          "jobs": {
+            "items": {
+              "$ref": "#/components/schemas/JobListItem"
+            },
+            "type": "array",
+            "title": "Jobs",
+            "description": "List of all jobs, both active and completed"
+          }
+        },
+        "type": "object",
+        "required": [
+          "jobs"
+        ],
+        "title": "JobsListResponse",
+        "description": "Response model for listing all jobs."
+      },
+      "LLMJudgeResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name of the LLM Judge model",
+            "examples": [
+              "gpt-4"
+            ]
+          },
+          "deployment_status": {
+            "$ref": "#/components/schemas/DeploymentStatus",
+            "description": "Status of the LLM Judge deployment",
+            "examples": [
+              "deployed"
+            ]
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "deployment_status"
+        ],
+        "title": "LLMJudgeResponse",
+        "description": "Model representing a LLM Judge status"
+      },
+      "NIMResponse": {
+        "properties": {
+          "model_name": {
+            "type": "string",
+            "title": "Model Name",
+            "description": "Name of the NIM model",
+            "examples": [
+              "gpt-4"
+            ]
+          },
+          "deployment_status": {
+            "$ref": "#/components/schemas/DeploymentStatus",
+            "description": "Status of the NIM deployment",
+            "examples": [
+              "deployed"
+            ]
+          },
+          "evaluations": {
+            "items": {
+              "$ref": "#/components/schemas/Evaluation"
+            },
+            "type": "array",
+            "title": "Evaluations",
+            "description": "List of evaluations performed on this NIM"
+          },
+          "customizations": {
+            "items": {
+              "$ref": "#/components/schemas/Customization"
+            },
+            "type": "array",
+            "title": "Customizations",
+            "description": "List of customizations performed on this NIM"
+          }
+        },
+        "type": "object",
+        "required": [
+          "model_name",
+          "deployment_status",
+          "evaluations",
+          "customizations"
+        ],
+        "title": "NIMResponse",
+        "description": "Model representing a NIM and its evaluations."
+      },
+      "ValidationError": {
+        "properties": {
+          "loc": {
+            "items": {
+              "anyOf": [
+                {
+                  "type": "string"
+                },
+                {
+                  "type": "integer"
+                }
+              ]
+            },
+            "type": "array",
+            "title": "Location"
+          },
+          "msg": {
+            "type": "string",
+            "title": "Message"
+          },
+          "type": {
+            "type": "string",
+            "title": "Error Type"
+          }
+        },
+        "type": "object",
+        "required": [
+          "loc",
+          "msg",
+          "type"
+        ],
+        "title": "ValidationError"
+      }
+    }
+  }
+}

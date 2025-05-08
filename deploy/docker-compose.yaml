@@ -1,0 +1,123 @@
+services:
+
+  api:
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.1.0.rc1}
+    build:
+      context: ..
+      dockerfile: ./deploy/Dockerfile
+      target: dev
+    ports:
+      - "8000:8000"
+    environment:
+      - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - REDIS_URL=redis://redis:6379/0
+      - MONGODB_URL=mongodb://mongodb:27017
+      - MONGODB_DB=flywheel
+    volumes:
+      - ./src:/app/src  # Mount the src directory for hot reloading
+    command: ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    restart: always
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+
+  celery_worker:
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.1.0.rc1}
+    build:
+      context: ..
+      dockerfile: ./deploy/Dockerfile
+      target: dev
+    environment:
+      - ELASTICSEARCH_URL=http://localhost:9200
+      - REDIS_URL=redis://localhost:6379/0
+      - MONGODB_URL=mongodb://localhost:27017
+      - MONGODB_DB=flywheel
+      - NVCF_API_KEY=${NVCF_API_KEY}
+    network_mode: host
+    volumes:
+      - ./src:/app/src  # Mount the src directory for hot reloading
+    # Uncomment if you want to reload (and kill all running workers) any time source files change
+    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
+
+    # Uncomment if you want to run celery without reloading on file changes
+    # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
+
+    restart: always
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+
+  # Datastores
+  # - Redis is the Celery broker and result backend
+  # - MongoDB is the database for the API
+  # - Elasticsearch is the database for the logging proxy
+  redis:
+    image: redis:7.2-alpine
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis-data:/data
+    command: redis-server --appendonly yes
+    restart: always
+
+  mongodb:
+    image: mongo:7.0
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb-data:/data/db
+    environment:
+      - MONGO_LOG_LEVEL=error
+    command: >
+      mongod --quiet
+      --setParameter diagnosticDataCollectionEnabled=false
+      --setParameter logComponentVerbosity='{ "network": { "verbosity": 0 }, "command": { "verbosity": 0 }, "control": { "verbosity": 0 } }'
+    restart: always
+    healthcheck:
+      test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet
+      interval: 10s
+      timeout: 10s
+      retries: 5
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - cluster.routing.allocation.disk.watermark.low=99%
+      - cluster.routing.allocation.disk.watermark.high=99%
+      - cluster.routing.allocation.disk.watermark.flood_stage=99%
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - logger.org.elasticsearch=ERROR
+      - logger.org.elasticsearch.cluster=ERROR
+      - logger.org.elasticsearch.discovery=ERROR
+      - logger.org.elasticsearch.gateway=ERROR
+      - logger.org.elasticsearch.indices=ERROR
+      - logger.org.elasticsearch.node=ERROR
+      - logger.org.elasticsearch.transport=ERROR
+    ports:
+      - "9200:9200"
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -q '\"status\":\"green\"' || exit 1"]
+      interval: 10s
+      timeout: 10s
+      retries: 30
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+
+volumes:
+  elasticsearch-data:
+  redis-data:
+  mongodb-data:

@@ -1,0 +1,150 @@
+nmp_config:
+  # nemo_base_url: "https://nmp.int.aire.nvidia.com"
+  # nim_base_url: "https://nim.int.aire.nvidia.com"
+  # datastore_base_url: "https://datastore.int.aire.nvidia.com"
+  nemo_base_url: "http://nemo.test"
+  nim_base_url: "http://nim.test"
+  datastore_base_url: "http://data-store.test"
+
+  # This is the maximum number of NIMs that can run in parallel
+  nim_parallelism: 1
+
+  # All resources created in NMP will be namespaced to this value
+  nmp_namespace: "dfwbp"
+
+# Logging configuration
+logging_config:
+  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+# if llm_judge_config is not set, the default remote model will be used
+# tested with meta/llama-3.1-8b-instruct, need to test with llama-3.3-70b-instruct and enable
+# llm_judge_config:
+#   model_name: "meta/llama-3.1-8b-instruct"
+#   context_length: 32768
+#   gpus: 1
+#   pvc_size: 25Gi
+#   tag: "1.8.3"
+
+llm_judge_config:
+  type: "remote"
+  # url: "http://0.0.0.0:9022/v1/chat/completions"
+  # model_id: "meta/llama-3.3-70b-instruct"
+  url: "https://integrate.api.nvidia.com/v1/chat/completions"
+  model_id: "nvdev/meta/llama-3.3-70b-instruct"
+  api_key_env: "NVCF_API_KEY"
+
+  # To spin up a dedicated NIM in your cluster, comment the above uncomment and fill these:
+  # type: "local"
+  # model_name: "meta/llama-3.3-70b-instruct"
+  # context_length: 32768
+  # gpus: 1
+  # pvc_size: 25Gi
+  # tag: "1.8.3"
+
+nims:
+  - model_name: "meta/llama-3.2-1b-instruct"
+    context_length: 8192
+    gpus: 1
+    pvc_size: 25Gi
+    tag: "1.8.3"
+    customization_enabled: true
+
+  # - model_name: "meta/llama-3.2-3b-instruct"
+  #   context_length: 32768
+  #   gpus: 1
+  #   pvc_size: 25Gi
+  #   tag: "1.8.3"
+
+  # - model_name: "meta/llama-3.1-8b-instruct"
+  #   context_length: 32768
+  #   gpus: 1
+  #   pvc_size: 25Gi
+  #   tag: "1.8.3"
+
+  # - model_name: "meta/llama-3.2-3b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "meta/llama-3.3-70b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "meta/llama-3.1-8b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "meta/llama-3.2-1b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+## ignore below for now
+
+  # - model_name: "meta/llama-3.1-70b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "nvidia/llama-3.1-nemotron-70b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "google/gemma-2-2b-it"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "deepseek-ai/deepseek-r1"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "qwen/qwen2_5-coder-7b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "qwen/qwen2.5-coder-32b-instruct"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+  # - model_name: "mistralai/mistral-7b-instruct-v0.3"
+  #   context_length: 8192
+  #   gpus: null
+  #   pvc_size: null
+
+# Data split config:
+# train, val, eval split sizes and ratios
+data_split_config:
+  eval_size: 20
+  val_ratio: 0.1
+  min_total_records: 50
+  random_seed: null
+
+# ICL config:
+# max context length, reserved tokens, max examples, min examples
+icl_config:
+  max_context_length: 32768
+  reserved_tokens: 4096
+  max_examples: 3
+  min_examples: 1
+
+# Training config:
+# Customzation config with default values
+training_config:
+  training_type: "sft"
+  finetuning_type: "lora"
+  epochs: 2
+  batch_size: 16
+  learning_rate: 0.0001
+
+# LoRA config:
+# adapter dimension, adapter dropout
+lora_config:
+  adapter_dim: 32
+  adapter_dropout: 0.1

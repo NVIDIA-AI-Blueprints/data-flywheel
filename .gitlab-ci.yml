@@ -1,0 +1,179 @@
+# SPDX-FileCopyrightText: Copyright (c) 2024 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+# SPDX-License-Identifier: LicenseRef-NvidiaProprietary
+
+# TODO: can we enumerate this matrix automatically somehow based on earthly job output?
+.ci_images: &ci_images
+  - ${CI_REGISTRY_IMAGE}/nemo-flywheel-blueprint-api:${CI_COMMIT_SHA}
+
+default:
+  tags:
+    - nemollm-common
+  interruptible: true
+
+workflow:
+  rules:
+    # no branch pipeline while MR is open against same branch
+    - if: $CI_COMMIT_BRANCH && $CI_OPEN_MERGE_REQUESTS
+      when: never
+    # tag pipelines allowed
+    - if: $CI_COMMIT_TAG
+    # protected branch and tag pipelines allowed
+    - if: $CI_COMMIT_REF_PROTECTED
+    # schedule pipelines allowed
+    - if: $CI_PIPELINE_SOURCE == "schedule"
+
+stages:
+  - cache
+  - lint
+  - test
+  - build
+  - publish
+  - security
+
+# Base UV job configuration
+.uv_job_base:
+  image: python:3.11
+  variables:
+    UV_CACHE_DIR: .uv-cache
+  before_script:
+    - apt-get update && apt-get install -y clang
+    - pip install uv
+    - uv venv
+    - source .venv/bin/activate
+  after_script:
+    - uv cache prune --ci
+  cache:
+    key:
+      files:
+        - uv.lock
+    paths:
+      - $UV_CACHE_DIR
+      - .venv
+
+# Cache job for UV dependencies
+check-uv-cache:cache:
+  needs: []
+  stage: cache
+  rules:
+    - if: $CI_COMMIT_BRANCH == $CI_DEFAULT_BRANCH
+    - if: $CI_COMMIT_BRANCH =~ /^release\/.*/
+    - changes:
+        - uv.lock
+      variables:
+        POLICY: pull-push
+  extends: [ .uv_job_base ]
+  script:
+    - uv sync --frozen --dev --no-install-workspace
+  cache:
+    policy: pull-push
+
+# Base job for UV-based jobs
+.uv_job:
+  extends: [ .uv_job_base ]
+  cache:
+    policy: pull
+
+# Lint job
+python-style:lint:
+  stage: lint
+  extends: [.uv_job]
+  script:
+    - uv run pre-commit run ruff --all-files
+    - uv run pre-commit run ruff-format --all-files
+  variables:
+    PRE_COMMIT_HOME: $CI_PROJECT_DIR/.cache/pre-commit
+  cache:
+    key: pre-commit-cache
+    paths:
+      - .cache/pre-commit
+
+license-check:lint:
+  stage: lint
+  extends: [.uv_job]
+  script:
+    - mkdir -p licensecheck
+    - script -qec "uv run licensecheck --format simple -o licensecheck/ci_licenses.txt"
+    - diff third_party/licenses.txt licensecheck/ci_licenses.txt
+  artifacts:
+    expire_in: 1 week
+    when: on_failure
+    paths:
+      - licensecheck/ci_licenses.txt
+
+# the magic include
+include:
+  - component: gitlab-master.nvidia.com/dl/ai-services/gitlab-components/nemo-artifact/build-docker@5.3.2
+    inputs:
+      job_prefix: api
+      image_uri: ${CI_REGISTRY_IMAGE}/nemo-flywheel-blueprint-api
+      build_args: --secret id=gitlab_token,env=CI_JOB_TOKEN
+      context: ./
+      dockerfile: ./deploy/Dockerfile
+
+  - component: gitlab-master.nvidia.com/dl/ai-services/gitlab-components/nemo-artifact/image-publish@5.3.2
+    inputs:
+      job_prefix: nemo-llm-api
+      local_image: ${CI_REGISTRY_IMAGE}/nemo-flywheel-blueprint-api
+      remote_image_dest: nvcr.io/nvidian/nemo-llm/nemo-flywheel-blueprint-api
+
+
+  # OSS scanner
+  - project: 'pstooling/gitlab-templates'
+    ref: main
+    file:
+      - '/templates/pulse-in-pipeline/Scan.gitlab-ci.yml'
+  - component: $CI_SERVER_FQDN/dl/ai-services/gitlab-components/nemo-security/sast-scan@1.1
+  - component: $CI_SERVER_FQDN/dl/ai-services/gitlab-components/nemo-security/container-scan@1.2
+    inputs:
+      container_images: *ci_images
+      nspect_id: NSPECT-HBS9-YQFW
+  - component: $CI_SERVER_FQDN/dl/ai-services/gitlab-components/nemo-security/container-cred-scan@1.3
+    inputs:
+      container_images: *ci_images
+
+
+test:api:
+  stage: test
+  image: python:3.11
+  services:
+    - name: mongo:7.0
+      alias: mongodb
+  before_script:
+    - pip install uv
+    - uv venv
+    - source .venv/bin/activate
+    - uv sync --dev --frozen
+  script:
+    - uv run pytest
+
+test:integration:
+  stage: test
+  image: python:3.11
+  services:
+    - name: redis:7.2-alpine
+      alias: redis
+    - name: mongo:7.0
+      alias: mongodb
+    - name: docker.elastic.co/elasticsearch/elasticsearch:8.12.2
+      alias: elasticsearch
+      variables:
+        discovery.type: single-node
+        xpack.security.enabled: false
+        ES_JAVA_OPTS: -Xms512m -Xmx512m
+        cluster.routing.allocation.disk.watermark.low: 99%
+        cluster.routing.allocation.disk.watermark.high: 99%
+        cluster.routing.allocation.disk.watermark.flood_stage: 99%
+  before_script:
+    - pip install uv
+    - uv venv
+    - source .venv/bin/activate
+    - uv sync --dev --frozen
+  script:
+    - uv run pytest -m integration tests/integration/test_job_evaluation.py -v
+  variables:
+    ELASTICSEARCH_URL: http://elasticsearch:9200
+    REDIS_URL: redis://redis:6379/0
+    MONGODB_URL: mongodb://mongodb:27017
+    MONGODB_DB: flywheel
+    # These are mocked out by the test client
+    NVCF_API_KEY: totally-my-real-key
