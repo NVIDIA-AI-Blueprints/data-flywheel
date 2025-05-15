@@ -15,6 +15,10 @@ You can get started quickly and achieve similar results using your own infrastru
   - [What is a Data Flywheel?](#what-is-a-data-flywheel)
     - [Where the NeMo Microservice Platform Comes In](#where-the-nemo-microservice-platform-comes-in)
   - [How to Use This Blueprint](#how-to-use-this-blueprint)
+    - [Preparing your data](#preparing-your-data)
+      - [1 – Log schema](#1log-schema)
+      - [2 – Instrumenting an application](#2instrumenting-an-application)
+      - [3 – Import helpers and customization](#3import-helpers-and-customization)
     - [Real-World Results and What to Expect](#real-world-results-and-what-to-expect)
     - [Additional Reading](#additional-reading)
   - [Technical Details](#technical-details)
@@ -23,6 +27,7 @@ You can get started quickly and achieve similar results using your own infrastru
     - [Software Components](#software-components)
     - [Technical Diagrams](#technical-diagrams)
     - [Minimum System Requirements](#minimum-system-requirements)
+      - [Hardware Requirements](#hardware-requirements)
       - [Software Requirements](#software-requirements)
       - [Service Requirements](#service-requirements)
       - [Resource Requirements](#resource-requirements)
@@ -33,8 +38,6 @@ You can get started quickly and achieve similar results using your own infrastru
   - [Contributing](#contributing)
   - [License](#license)
   - [Disclaimer:](#disclaimer)
-  - [Why use this Blueprint instead of raw NMP?](#why-use-this-blueprint-instead-of-raw-nmp)
-  - [Roadmap \& Planned Enhancements](#roadmap--planned-enhancements)
 
 ## What is a Data Flywheel?
 
@@ -339,6 +342,21 @@ To get the most value from the Data Flywheel Foundational Blueprint, ensure you 
 
 By following this blueprint, you can confidently advance your AI model optimization initiatives, leveraging a process that is transparent, adaptable, and focused on measurable outcomes.
 
+#### Future Roadmap
+The blueprint purposely keeps the first release simple.  Areas we are actively exploring for future versions include:
+
+| Theme | Example Ideas |
+|-------|--------------|
+| **Automated Data Collection** | Integrated collection of model inputs/outputs, latency, and metadata |
+| **Visualization Dashboards** | Pre-built Grafana/Kibana dashboards for cost, latency, drift and accuracy trends |
+| **Agentic Observability & Prompt Insights** | Detect regression, drift, or improvement trends based on performance telemetry |
+| **Dynamic Configuration Overrides** | Runtime overrides for config.yaml settings via API or environment variables |
+| **Data Governance & Privacy** | PII redaction pipeline support for logs and datasets; fine-grained RBAC on dataset access and usage |
+| **Data Governance & Privacy** | Enable experiment tracking tooling for granular tracking of fine-tune runs, metrics, artifacts, and config diffs |
+| **Hyper-parameter Sweeps** | Support launching NMP hyper-parameter sweeps from external tools (e.g. Flywheel) and pulling results back for analysis and visualization | |
+| **Smarter Dataset Construction** | Heuristics or LLM-based parsing to derive eval vs. fine-tune splits from logs; support for DPO/KTO pipelines or filtering by thumbs-up/down signal |
+| **Model & Backend Extensibility** | Add support for additional NIMs such as Qwen, LLaMA-Nemotron, and Mistral; include testing and evaluation support for quantized models |
+
 ### Software Components
 
 The blueprint consists of the following implemented components:
@@ -365,39 +383,17 @@ For details on the architecture of a Flywheel and the components of this Bluepri
 
 ### Minimum System Requirements
 
-**Note**: The following does not include requirements for NMP (NeMo Microservices Platform)
+| Requirement Type | Details |
+|-------------------------|---------|
+| Minimum GPU | **Self-hosted LLM Judge**: 6× (NVIDIA H100 or A100 GPUs)<br>**Remote LLM Judge**: 2× (NVIDIA H100 or A100 GPUs) |
+| Cluster | Single-node NVIDIA GPU cluster on Linux with cluster-admin permissions |
+| Disk Space | At least 200 GB free |
+| Software | Python 3.11<br>Docker Engine<br>Docker Compose v2 |
+| Services | Elasticsearch 8.12.2<br>MongoDB 7.0<br>Redis 7.2<br>FastAPI (API server)<br>Celery (task processing) |
+| Resource | **Minimum Memory**: 1GB (512MB reserved for Elasticsearch)<br>**Storage**: Varies by log volume/model size<br>**Network**: Ports 8000 (API), 9200 (Elasticsearch), 27017 (MongoDB), 6379 (Redis) |
+| Development | Docker Compose for local dev with hot reloading<br>Supports macOS (Darwin) and Linux<br>Optional: GPU support for model inference |
+| Production | Kubernetes cluster (recommended)<br>Resources scale with workload<br>Persistent volume support for data storage |
 
-#### Software Requirements
-
-- Python 3.11
-- Docker Engine
-- Docker Compose v2
-
-#### Service Requirements
-
-- Elasticsearch 8.12.2
-- MongoDB 7.0
-- Redis 7.2
-- FastAPI (API server)
-- Celery (task processing)
-
-#### Resource Requirements
-
-- Minimum Memory: 1GB (512MB reserved for Elasticsearch)
-- Storage: Varies based on log volume and model size
-- Network: Ports 8000 (API), 9200 (Elasticsearch), 27017 (MongoDB), 6379 (Redis)
-
-#### Development Environment
-
-- Docker Compose for local development with hot reloading
-- Support for macOS (Darwin) and Linux
-- Optional: GPU support for model inference
-
-#### Production Environment
-
-- Kubernetes cluster (recommended for production)
-- Resource requirements scale with workload
-- Persistent volume support for data storage
 
 ## Next Steps
 

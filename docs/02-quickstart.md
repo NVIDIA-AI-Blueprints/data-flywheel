@@ -6,20 +6,18 @@ This quickstart provides an initial [AIVA dataset](../data/aiva-final.jsonl), an
 
 ## Prerequisites
 
-### Hardware Requirements
+### Review Minimum System Requirements
 
-- **Minimum GPU requirements**: 
-  - Self-hosted LLM Judge model: 6x (NVIDIA H100 GPUs or NVIDIA A100 GPUs)
-  - Remote LLM Judge model: 2x (NVIDIA H100 GPUs or NVIDIA A100 GPUs)
-- **Cluster**: A single-node NVIDIA GPU cluster on a Linux host with cluster-admin level permissions
-- **Disk space**: At least 200 GB of free disk space
-
-### Software and Access Requirements
-
-Before you begin, make sure you have:
-
-- [Docker and Docker Compose](https://docs.docker.com/desktop) installed
-- [Access to NVIDIA NGC](https://catalog.ngc.nvidia.com/) (for API key)
+| Requirement Type | Details |
+|-------------------------|---------|
+| Minimum GPU | **Self-hosted LLM Judge**: 6× (NVIDIA H100 or A100 GPUs)<br>**Remote LLM Judge**: 2× (NVIDIA H100 or A100 GPUs) |
+| Cluster | Single-node NVIDIA GPU cluster on Linux with cluster-admin permissions |
+| Disk Space | At least 200 GB free |
+| Software | Python 3.11<br>Docker Engine<br>Docker Compose v2 |
+| Services | Elasticsearch 8.12.2<br>MongoDB 7.0<br>Redis 7.2<br>FastAPI (API server)<br>Celery (task processing) |
+| Resource | **Minimum Memory**: 1GB (512MB reserved for Elasticsearch)<br>**Storage**: Varies by log volume/model size<br>**Network**: Ports 8000 (API), 9200 (Elasticsearch), 27017 (MongoDB), 6379 (Redis) |
+| Development | Docker Compose for local dev with hot reloading<br>Supports macOS (Darwin) and Linux<br>Optional: GPU support for model inference |
+| Production | Kubernetes cluster (recommended)<br>Resources scale with workload<br>Persistent volume support for data storage |
 
 ### Obtain an NGC API Key and Log In
 
@@ -31,7 +29,6 @@ You must [generate a personal API key](https://org.ngc.nvidia.com/setup/api-keys
 - Download models on-premises
 
 For detailed steps, see the official [NGC Private Registry User Guide](https://docs.nvidia.com/ngc/gpu-cloud/ngc-private-registry-user-guide/index.html#generating-personal-api-key).
-
 
 ### Install and Configure Git LFS
 

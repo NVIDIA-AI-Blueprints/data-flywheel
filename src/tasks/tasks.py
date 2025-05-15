@@ -412,10 +412,10 @@ def run_generic_eval(
     previous_result: TaskResult, eval_type: EvalType, dataset_type: DatasetType
 ) -> TaskResult:
     """
-    Run the ICL evaluation against the NIM.
+    Run the Base/ICL/Customization evaluation against the NIM based on the eval_type.
     Takes the NIM details from the previous task.
     """
-    logger.info("Running evaluation")
+    logger.info(f"Running {eval_type} evaluation")
     evaluator = Evaluator(llm_judge_config=previous_result.llm_judge_config)
     start_time = datetime.utcnow()
 

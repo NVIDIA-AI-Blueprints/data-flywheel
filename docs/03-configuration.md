@@ -34,6 +34,10 @@ Learn how to configure the Data Flywheel Foundational Blueprint using this guide
 >
 > Advanced configuration such as Large-scale hyper-parameter sweeps, architecture search, or custom evaluation metrics must run directly in **NeMo Microservices Platform (NMP)**. The configurations in this guide are only for the blueprint itself.
 
+> **Note**
+> 
+> For detailed NMP API documentation, refer to the [official documentation](https://docs.nvidia.com/nemo/microservices/latest/api/index.html).
+
 ## Configuration File Location
 
 The Data Flywheel Foundational Blueprint uses a YAML-based configuration system. The primary configuration file is located at:
@@ -123,9 +127,9 @@ nims:
 |--------|-------------|----------|---------|
 | `model_name` | Name of the model to deploy | Yes | "meta/llama-3.2-1b-instruct" |
 | `context_length` | Maximum context length in tokens | Yes | 32768 |
-| `gpus` | Number of GPUs to allocate | No | 1 |
+| `gpus` | Number of GPUs to allocate | Yes | 1 |
 | `pvc_size` | Persistent volume claim size | No | "25Gi" |
-| `tag` | Model version tag | No | "1.8.3" |
+| `tag` | Model version tag | Yes | "1.8.3" |
 | `customization_enabled` | Whether model can be fine-tuned | No | true |
 
 ### Supported Models
