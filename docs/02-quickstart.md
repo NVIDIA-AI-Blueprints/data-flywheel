@@ -163,7 +163,7 @@ Load test data using the provided scripts:
 
 ```bash
 uv run python src/scripts/load_test_data.py \
-  --file aiva-final.jsonl
+  --file aiva-final.jsonl --client-id dev
 ```
 
 #### Custom Data
