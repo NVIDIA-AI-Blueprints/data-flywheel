@@ -42,7 +42,7 @@ services:
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
     # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
+    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery"]
 
     # Uncomment if you want to run celery without reloading on file changes
     # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
@@ -55,6 +55,38 @@ services:
         condition: service_started
       mongodb:
         condition: service_started
+
+
+  celery_parent_worker:
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc3}
+    build:
+      context: ..
+      dockerfile: ./deploy/Dockerfile
+      target: dev
+    environment:
+      - ELASTICSEARCH_URL=http://localhost:9200
+      - REDIS_URL=redis://localhost:6379/0
+      - MONGODB_URL=mongodb://localhost:27017
+      - MONGODB_DB=flywheel
+      - NGC_API_KEY=${NGC_API_KEY}
+    network_mode: host
+    volumes:
+      - ./src:/app/src  # Mount the src directory for hot reloading
+    # Uncomment if you want to reload (and kill all running workers) any time source files change
+    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue"]
+
+    # Uncomment if you want to run celery without reloading on file changes
+    # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
+
+    restart: always
+    depends_on:
+      elasticsearch:
+        condition: service_started
+      redis:
+        condition: service_started
+      mongodb:
+        condition: service_started
+
 
   # Datastores
   # - Redis is the Celery broker and result backend

@@ -3,8 +3,6 @@ nmp_config:
   nim_base_url: "http://nim.test"
   datastore_base_url: "http://data-store.test"
 
-  # This is the maximum number of NIMs that can run in parallel
-  nim_parallelism: 1
 
   # All resources created in NMP will be namespaced to this value
   nmp_namespace: "dfwbp"
@@ -14,20 +12,20 @@ logging_config:
   level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 llm_judge_config:
-  type: "remote"
+  # type: "remote"
   # url: "http://0.0.0.0:9022/v1/chat/completions"
   # model_id: "meta/llama-3.3-70b-instruct"
-  url: "https://integrate.api.nvidia.com/v1/chat/completions"
-  model_id: "meta/llama-3.3-70b-instruct"
-  api_key_env: "NGC_API_KEY"
+  # url: "https://integrate.api.nvidia.com/v1/chat/completions"
+  # model_id: "meta/llama-3.3-70b-instruct"
+  # api_key_env: "NGC_API_KEY"
 
   # To spin up a dedicated NIM in your cluster, comment the above uncomment and fill these:
-  # type: "local"
-  # model_name: "meta/llama-3.3-70b-instruct"
-  # context_length: 32768
-  # gpus: 4
-  # pvc_size: 25Gi
-  # tag: "1.8.3"
+  type: "local"
+  model_name: "meta/llama-3.3-70b-instruct"
+  context_length: 32768
+  gpus: 4
+  pvc_size: 25Gi
+  tag: "1.8.3"
 
 nims:
   - model_name: "meta/llama-3.2-1b-instruct"
@@ -62,7 +60,7 @@ nims:
 # Data split config:
 # train, val, eval split sizes and ratios
 data_split_config:
-  eval_size: 20
+  eval_size: 100
   val_ratio: 0.1
   min_total_records: 50
   random_seed: null

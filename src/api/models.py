@@ -103,6 +103,8 @@ class TaskResult(BaseModel):
     # Separate customization tracking
     customization: CustomizationResult | None = None
     llm_judge_config: NIMConfig | None = None
+    # Store error message if any stage fails so downstream tasks can short-circuit
+    error: str | None = None
 
     def add_evaluation(self, eval_type: EvalType, result: EvaluationResult):
         """Helper method to add/update evaluation results"""

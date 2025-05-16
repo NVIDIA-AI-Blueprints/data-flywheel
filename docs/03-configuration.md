@@ -55,7 +55,6 @@ nmp_config:
   nemo_base_url: "http://nemo.test"
   nim_base_url: "http://nim.test"
   datastore_base_url: "http://data-store.test"
-  nim_parallelism: 1
   nmp_namespace: "dfwbp"
 ```
 
@@ -64,7 +63,6 @@ nmp_config:
 | `nemo_base_url` | Base URL for NeMo services | `http://nemo.test` |
 | `nim_base_url` | Base URL for NIM services | `http://nim.test` |
 | `datastore_base_url` | Base URL for datastore services | `http://data-store.test` |
-| `nim_parallelism` | Maximum number of NIMs that can run in parallel | 1 |
 | `nmp_namespace` | Namespace for NMP resources | "dfwbp" |
 
 ## Logging Configuration

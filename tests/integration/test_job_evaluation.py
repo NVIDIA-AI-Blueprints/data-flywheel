@@ -61,14 +61,31 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
                     json=lambda: {"status_details": {"status": DeploymentStatus.READY}},
                 )
             elif method == "get" and "/v1/models" in url:
+                # Match any model name that's being checked
+                if "model_name" in kwargs.get("params", {}):
+                    model_name = kwargs["params"]["model_name"]
+                    return MagicMock(
+                        status_code=200,
+                        json=lambda: {"data": [{"id": model_name, "status": "ready"}]},
+                    )
+                else:
+                    # General list of models
+                    return MagicMock(
+                        status_code=200,
+                        json=lambda: {
+                            "data": [
+                                {"id": "meta/llama-3.2-1b-instruct", "status": "ready"},
+                                {"id": "meta/llama-3.3-70b-instruct", "status": "ready"},
+                                {"id": "test-model-id", "status": "ready"},
+                                {"id": output_model, "status": "ready"},
+                                {"id": "customized-meta/llama-3.2-1b-instruct", "status": "ready"},
+                            ]
+                        },
+                    )
+            elif method == "delete" and "/v1/deployment/model-deployments" in url:
                 return MagicMock(
                     status_code=200,
-                    json=lambda: {
-                        "data": [
-                            {"id": "meta/llama-3.2-1b-instruct", "status": "ready"},
-                            {"id": "test-model-id", "status": "ready"},
-                        ]
-                    },
+                    json=lambda: {"message": "Deployment deleted successfully"},
                 )
             else:
                 raise ValueError(f"Unexpected request: {method} {url}")
@@ -78,6 +95,9 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
         )
         mock_dms_requests.get.side_effect = lambda url, **kwargs: mock_dms_requests_side_effect(
             "get", url, **kwargs
+        )
+        mock_dms_requests.delete.side_effect = lambda url, **kwargs: mock_dms_requests_side_effect(
+            "delete", url, **kwargs
         )
 
         # Mock requests responses based on URL
@@ -122,6 +142,9 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
         mock_requests.get.side_effect = lambda url, **kwargs: mock_requests_side_effect(
             "get", url, **kwargs
         )
+        mock_requests.delete.side_effect = lambda url, **kwargs: mock_requests_side_effect(
+            "delete", url, **kwargs
+        )
 
         # Mock customizer responses
         def mock_customizer_requests_side_effect(method, url, **kwargs):
@@ -154,7 +177,7 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
             elif method == "get" and "/v1/models" in url:
                 return MagicMock(
                     status_code=200,
-                    json=lambda: {"data": [{"id": output_model}]},
+                    json=lambda: {"data": [{"id": output_model, "status": "ready"}]},
                 )
             else:
                 raise ValueError(f"Unexpected customizer request: {method} {url}")
@@ -164,6 +187,9 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
         )
         mock_customizer_requests.get.side_effect = (
             lambda url, **kwargs: mock_customizer_requests_side_effect("get", url, **kwargs)
+        )
+        mock_customizer_requests.delete.side_effect = (
+            lambda url, **kwargs: mock_customizer_requests_side_effect("delete", url, **kwargs)
         )
 
         # Mock upload_data to return the file path

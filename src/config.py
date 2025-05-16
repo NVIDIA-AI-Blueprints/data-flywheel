@@ -28,7 +28,6 @@ class NMPConfig(BaseModel):
     nemo_base_url: str = Field(..., frozen=True)
     nim_base_url: str = Field(..., frozen=True)
     nmp_namespace: str = Field("dwfbp", frozen=True)
-    nim_parallelism: int = Field(1, frozen=True)
 
 
 class DataSplitConfig(BaseModel):

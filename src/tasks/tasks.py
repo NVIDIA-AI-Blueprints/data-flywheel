@@ -239,6 +239,7 @@ def create_datasets(
             {"_id": ObjectId(flywheel_run_id)},
             {"$set": {"error": error_msg, "status": "error"}},
         )
+        # Return a TaskResult so that downstream tasks can gracefully short-circuit
         raise e
 
 
@@ -328,6 +329,9 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
     # https://github.com/celery/celery/blob/main/examples/pydantic/tasks.py
     assert isinstance(previous_result, TaskResult)
 
+    ## reset previous_result.error as new nim starts
+    previous_result.error = None
+
     nim_config = NIMConfig(**nim_config)
     previous_result.nim = nim_config
 
@@ -362,7 +366,8 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
                 db.nims.update_one(
                     {"_id": nim_run.id}, {"$set": {"status": NIMRunStatus.ERROR, "error": str(e)}}
                 )
-                raise e
+                previous_result.error = str(e)
+                return previous_result
         else:
             logger.info(f"NIM {nim_config.model_name} is already deployed")
 
@@ -395,7 +400,8 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
             },
         )
         dms_client.shutdown_deployment()
-        raise e
+        previous_result.error = error_msg
+        return previous_result
 
 
 @celery_app.task(name="tasks.run_base_eval", pydantic=True)
@@ -415,6 +421,9 @@ def run_generic_eval(
     Run the Base/ICL/Customization evaluation against the NIM based on the eval_type.
     Takes the NIM details from the previous task.
     """
+    if _should_skip_stage(previous_result, f"run_{eval_type}_eval"):
+        return previous_result
+
     logger.info(f"Running {eval_type} evaluation")
     evaluator = Evaluator(llm_judge_config=previous_result.llm_judge_config)
     start_time = datetime.utcnow()
@@ -509,6 +518,8 @@ def run_generic_eval(
                     }
                 },
             )
+            previous_result.error = error_msg
+            return previous_result
 
     for job in jobs:
         # Wait for completion with progress updates
@@ -582,6 +593,7 @@ def run_generic_eval(
                 },
             )
             # no need to raise error here, the error is captured, let the task continue to spin down the deployment
+            previous_result.error = error_msg
 
     return previous_result
 
@@ -595,6 +607,9 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
     Args:
         previous_result: Result from the previous task containing workload_id and target_llm_model
     """
+    if _should_skip_stage(previous_result, "start_customization"):
+        return previous_result
+
     if not previous_result.nim.customization_enabled:
         logger.info(
             f"Customization skipped for {previous_result.nim.model_name} because it is using an external NIM"
@@ -703,12 +718,16 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
                 }
             },
         )
+        previous_result.error = error_msg
     return previous_result
 
 
 @celery_app.task(name="tasks.run_customization_eval", pydantic=True)
 def run_customization_eval(previous_result: TaskResult) -> TaskResult:
     """Run evaluation on the customized model."""
+    if _should_skip_stage(previous_result, "run_customization_eval"):
+        return previous_result
+
     try:
         if not previous_result.nim.customization_enabled:
             logger.info(f"Customization disabled for {previous_result.nim.model_name}")
@@ -742,6 +761,7 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
     except Exception as e:
         error_msg = f"Error running customization evaluation: {e!s}"
         logger.error(error_msg)
+        previous_result.error = error_msg
         return previous_result
 
 
@@ -805,6 +825,7 @@ def shutdown_deployment(previous_results: list[TaskResult] | TaskResult) -> Task
                 }
             },
         )
+        previous_result.error = error_msg
     return previous_result
 
 
@@ -863,6 +884,7 @@ def shutdown_llm_judge_deployment(previous_results: list[TaskResult] | TaskResul
                 }
             },
         )
+        previous_result.error = error_msg
     return previous_result
 
 
@@ -901,8 +923,31 @@ def run_nim_workflow_dag(workload_id: str, flywheel_run_id: str, client_id: str)
             workload_id=workload_id, flywheel_run_id=flywheel_run_id, client_id=client_id
         ),
         spin_up_llm_judge.s(),  ## spin up llm-judge
-        group(*nim_chains, max_parallel=settings.nmp_config.nim_parallelism),
+        chain(*nim_chains),
         shutdown_llm_judge_deployment.s(),
     )
-    # Execute the DAG and return the AsyncResult
-    return workflow.apply_async()
+    return workflow.apply_async(queue="parent_queue")
+
+
+# -------------------------------------------------------------
+# Helper utilities
+# -------------------------------------------------------------
+
+
+def _should_skip_stage(previous_result: TaskResult | None, stage_name: str) -> bool:
+    """Return True if the previous_result already carries an error.
+
+    When a stage fails we record the error message on the TaskResult instance.
+    Any subsequent stage that receives a TaskResult with ``error`` set will
+    short-circuit by returning immediately so the overall DAG keeps running
+    serially without raising.
+    """
+
+    if isinstance(previous_result, TaskResult) and previous_result.error:
+        logger.warning(
+            "Skipping %s because a previous stage failed: %s",
+            stage_name,
+            previous_result.error,
+        )
+        return True
+    return False

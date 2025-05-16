@@ -41,7 +41,7 @@ Check out the following example notebooks to learn how to optimize LLMs using a 
 To follow this tutorial, you will need at least six A100/H100-80GB NVIDIA GPUs, which will be allocated as follows:
 
 - **Fine-tuning:** At least one GPU for fine-tuning the `meta/llama-3.2-1B-instruct`, `meta/llama-3.2-3B-instruct` or `meta/llama-3.1-8B-instruct` model.
-- **Inference:** Atleast one GPU for deploying the corresponding NIM for evaluation.
+- **Inference:** At least one GPU for deploying the corresponding NIM for evaluation.
 - **LLM-as-a-judge evaluation:** Four GPUs to deploy the `meta/llama-3.3-70B-instruct` NIM to serve as a judge LLM for evaluation tool calling responses.
 
 Refer to the [platform prerequisites and installation guide](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html) to deploy NeMo Microservices.
@@ -75,7 +75,7 @@ customizer:
         volumeAccessMode: "ReadWriteOnce"
 ```
 
-Scale down the default deployment of `meta/lama-3.1-8b-instruct` NIM. Flywheel orchestrator will do all the necessary deployments on the user's behalf.
+Scale down the default deployment of `meta/llama-3.1-8b-instruct` NIM. Flywheel orchestrator will do all the necessary deployments on the user's behalf.
 
 ```bash
 export NEMO_URL="http://nemo.test"

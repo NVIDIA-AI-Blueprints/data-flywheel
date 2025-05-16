@@ -91,7 +91,7 @@ In just a few hours, this automated process built on top of NMP can:
 1. Group it by task (for example, if you have an agent doing multiple things, each node is a different task).
 1. De-dup it.
 1. Create eval and fine-tuning datasets from your production traffic and store them in NeMo Datastore.
-1. Kick of fine-tuning jobs with NeMo Customizer.
+1. Kick off fine-tuning jobs with NeMo Customizer.
 1. Run evaluations with LLM-as-judge comparisons on NeMo Evaluator.
 
 With reasonable defaults, the system automatically narrows a vast number of possible options down to a manageable set of promising candidates for further analysis—-no manual experiment design required.
@@ -198,7 +198,7 @@ A minimal example document therefore looks like:
 
 #### 2&ensp;–&ensp;Instrumenting an application
 
-If you already write request/response logs, you can either route that traffic to a production Elasticsearch instance that you manage or bulk import them into the the Elasticsearch instance started by `docker-compose`.  For new projects the snippet below shows how a **synchronous** OpenAI call can be wrapped so every interaction is written in the expected format.
+If you already write request/response logs, you can either route that traffic to a production Elasticsearch instance that you manage or bulk import them into the Elasticsearch instance started by `docker-compose`.  For new projects the snippet below shows how a **synchronous** OpenAI call can be wrapped so every interaction is written in the expected format.
 
 ```python
 # examples/log_to_es.py

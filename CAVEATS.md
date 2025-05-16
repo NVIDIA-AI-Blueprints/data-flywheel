@@ -20,7 +20,7 @@
 
 10. **Rate Limiting with NVIDIA Judge**: When using the build.nvidia.com service as our judge, particularly with the 3.3 70b model, we may easily encounter rate limit exceeded errors. This is due to the high demand and limited capacity of the service, which can restrict the number of requests processed in a given timeframe. Users should be aware of this limitation and plan their evaluations accordingly to avoid disruptions.
 
-11. **Can't see inference outputs**: Not possible to debug issues in models that haver inference outputs
+11. **Can't see inference outputs**: Not possible to debug issues in models that have inference outputs
 
 12. **Generic judge prompt**: Might want to expose an optional judge prompt for the workload POST jobs endpoint
 

@@ -298,6 +298,9 @@ def test_spin_up_nim(mock_db, mock_init_db, mock_dms_client, valid_nim_config):
     mock_db.nims.insert_one.assert_called_once()
     assert mock_db.nims.update_one.call_count >= 2  # Called for status updates
 
+    # No error should be present on the previous_result
+    assert previous_result.error is None
+
 
 def test_spin_up_nim_deployment_failure(mock_db, mock_init_db, mock_dms_client, valid_nim_config):
     """Test spinning up NIM instance when deployment fails."""
@@ -320,11 +323,11 @@ def test_spin_up_nim_deployment_failure(mock_db, mock_init_db, mock_dms_client, 
     # Configure DMS client to fail deployment
     mock_dms_client.deploy_model.side_effect = Exception("Deployment failed")
 
-    # The function should raise the deployment exception
-    with pytest.raises(Exception) as exc_info:
-        spin_up_nim(previous_result, valid_nim_config.model_dump())
+    # Call the function and ensure the error is captured on the returned TaskResult
+    spin_up_nim(previous_result, valid_nim_config.model_dump())
 
-    assert "Deployment failed" in str(exc_info.value)
+    assert previous_result.error is not None
+    assert "Deployment failed" in previous_result.error
 
     # Verify DMS client method calls
     mock_dms_client.is_deployed.assert_called_once()

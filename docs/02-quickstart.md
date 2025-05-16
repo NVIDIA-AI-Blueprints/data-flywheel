@@ -58,7 +58,7 @@ Authenticate with NGC using `nvcf login`. For detailed instructions, see the [NG
 
 ### 2. Deploy NMP
 
-To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#beginner-tutorial-prerequisites) beginner tutorial. These instructions launch NMP using a local Minikube clsuter. You have two options:
+To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#beginner-tutorial-prerequisites) beginner tutorial. These instructions launch NMP using a local Minikube cluster. You have two options:
 
 - [Installing using deployment scripts](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#nemo-ms-get-started-prerequisites-using-deployment-scripts)
 - [Installing manually](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#installing-manually)
@@ -151,7 +151,7 @@ You have several options to start the services:
 There are two ways to feed data to the Flywheel:
 
 1. **Manually**: For demo or short-lived environments using the provided `load_test_data.py` script.
-1. **Automatically**: For production environments where you deploy the Blueprint to run continuuously, via a [continuous log exportation flow](./01-architecture.md#how-production-logs-flow-into-the-flywheel).
+1. **Automatically**: For production environments where you deploy the Blueprint to run continuously, via a [continuous log exportation flow](./01-architecture.md#how-production-logs-flow-into-the-flywheel).
 
 Use the provided script and demo datasets to quickly experience the value of the flywheel service.
 
