@@ -33,6 +33,7 @@ You can get started quickly and achieve similar results using your own infrastru
       - [Resource Requirements](#resource-requirements)
       - [Development Environment](#development-environment)
       - [Production Environment](#production-environment)
+    - [Task Serialization Safeguard 🌐](#task-serialization-safeguard)
   - [Next Steps](#next-steps)
   - [Available Customizations](#available-customizations)
   - [Contributing](#contributing)
@@ -394,6 +395,17 @@ For details on the architecture of a Flywheel and the components of this Bluepri
 | Development | Docker Compose for local dev with hot reloading<br>Supports macOS (Darwin) and Linux<br>Optional: GPU support for model inference |
 | Production | Kubernetes cluster (recommended)<br>Resources scale with workload<br>Persistent volume support for data storage |
 
+### Task Serialization Safeguard 🌐
+
+**Why only one Flywheel run at a time?**  When the Flywheel kicks off a run it may need to spin up **multiple NIMs and customization jobs, each of which can claim one or more GPUs**.  The reference implementation does not yet discover the number of free GPUs in the cluster, so it uses a simple guardrail: **all invocations of `run_nim_workflow_dag` are serialized**.
+
+* The task is bound to a dedicated Celery queue (`parent_queue`). In the `docker-compose.yaml` there is a worker dedicated to this queue whose concurrency is set to `1`. There is a second worker bound to the default `celery` queue which can handle running other tasks (e.g. evals) in parallel.
+* Inside the task we wait for the full DAG to complete via `async_result.get(...)` before returning.
+* The call to create a job (i.e. `POST /jobs`) will not block, however. It will return immediately with a Job ID
+
+This ensures that only **one** Flywheel experiment can allocate GPUs at any given time, preventing accidental overallocation that would lead to failed NIM deployments or customizations.
+
+**Roadmap** – Automatic GPU introspection and smarter scheduling are planned for a future version of the Blueprint so multiple Flywheel runs can execute in parallel when resources permit.
 
 ## Next Steps
 

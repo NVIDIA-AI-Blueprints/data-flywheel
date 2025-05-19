@@ -98,6 +98,7 @@ To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://do
    - `icl_config`: Settings for in-context learning (ICL) examples.
    - `training_config` and `lora_config`: Training and fine-tuning parameters.
    - `logging_config`: Settings got logging . You can configure the logging level (e.g., DEBUG, INFO, WARNING, ERROR, CRITICAL). Default is "INFO".
+   - `llm_judge_config`: llm as judge configuration. By default the blueprint is configured to use a self-hosted judge llm, but users can switch to a remote llm of choice. 
 
    **Example: Adding a new NIM**
 

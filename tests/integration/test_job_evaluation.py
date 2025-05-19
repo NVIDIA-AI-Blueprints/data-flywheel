@@ -284,12 +284,15 @@ def test_full_job_evaluation_flow(
     assert flywheel_run is not None
     assert flywheel_run["workload_id"] == test_workload_id
     assert flywheel_run["num_records"] > 0
+    assert flywheel_run["finished_at"] is not None
 
     # Verify NIMs
     nims = list(db.nims.find({"flywheel_run_id": ObjectId(job_id)}))
     assert len(nims) > 0
     for nim in nims:
         assert nim["model_name"] is not None
+        # Ensure NIM deployment finished with COMPLETED status
+        assert nim["deployment_status"] == DeploymentStatus.COMPLETED
 
         # Verify evaluations for this NIM
         evaluations = list(db.evaluations.find({"nim_id": nim["_id"]}))

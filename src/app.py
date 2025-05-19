@@ -16,7 +16,6 @@ from fastapi import FastAPI
 
 from src.api.db import init_db
 from src.api.endpoints import router as api_router
-from src.lib.nemo.evaluator import Evaluator
 from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.app")
@@ -26,22 +25,10 @@ app = FastAPI()
 # Mount the API router
 app.include_router(api_router, prefix="/api")
 
-checked_evaluator_llm_judge_availability = False
-
-
-def check_evaluator_llm_judge_availability():
-    global checked_evaluator_llm_judge_availability
-    if not checked_evaluator_llm_judge_availability:
-        logger.info("Checking evaluator LLM judge availability...")
-        Evaluator().validate_llm_judge_availability()
-        logger.info("Evaluator LLM judge is available!")
-        checked_evaluator_llm_judge_availability = True
-
 
 @app.on_event("startup")
 def startup_db_client():
     init_db()
-    check_evaluator_llm_judge_availability()
 
 
 if __name__ == "__main__":

@@ -183,8 +183,11 @@ def validate_records(
     records: list[Record], workload_id: str, split_config: DataSplitConfig
 ) -> None:
     if len(records) < split_config.min_total_records:
-        msg = f"Not enough records found for the given workload_id: {workload_id}. \
-                         A minimum of {split_config.min_total_records} records is required, but only {len(records)} were found."
+        msg = (
+            f"Not enough records found for the given workload_id: {workload_id}. "
+            + f"A minimum of {split_config.min_total_records} records is required, "
+            + f"but only {len(records)} were found."
+        )
         logger.error(msg)
         raise ValueError(msg)
 

@@ -1,7 +1,7 @@
 services:
 
   api:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc3}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -27,7 +27,7 @@ services:
         condition: service_started
 
   celery_worker:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc3}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -42,7 +42,7 @@ services:
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
     # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery"]
+    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery", "-n", "main_worker@%h"]
 
     # Uncomment if you want to run celery without reloading on file changes
     # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
@@ -58,7 +58,7 @@ services:
 
 
   celery_parent_worker:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc3}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -73,7 +73,7 @@ services:
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
     # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue"]
+    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue", "-n", "parent_worker@%h"]
 
     # Uncomment if you want to run celery without reloading on file changes
     # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]

@@ -24,6 +24,30 @@ from src.config import settings
 from src.lib.flywheel.util import DataSplitConfig  # E402
 from src.tasks.tasks import create_datasets  # E402
 
+# This fixture automatically tweaks global settings for every test so that they
+# use small, deterministic values and a test-specific namespace.  We patch
+# *attributes* on the existing objects where they are mutable, but for frozen
+# Pydantic models (e.g. `NMPConfig`) we replace the entire object with a
+# modified copy generated via `model_copy(update={...})`.
+
+
+@pytest.fixture(autouse=True)
+def tweak_settings(monkeypatch):
+    """Provide deterministic test configuration via the global `settings`."""
+
+    # --- Data-split parameters (fields are *not* frozen) --------------------
+    monkeypatch.setattr(settings.data_split_config, "min_total_records", 1, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "eval_size", 2, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "limit", 100, raising=False)
+
+    # --- NMP namespace (field *is* frozen, so create a new object) ----------
+    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
+
+    yield
+
 
 @pytest.fixture
 def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
@@ -297,7 +321,7 @@ def test_create_datasets_not_enough_records_error(
     """Test that create_datasets properly handles and logs errors when not enough records are found."""
     flywheel_run_id, mongo_db = create_flywheel_run
 
-    with patch("src.tasks.tasks.get_es_client") as mock_get_es_client:
+    with patch("src.lib.integration.record_exporter.get_es_client") as mock_get_es_client:
         mock_es_client = MagicMock()
         mock_get_es_client.return_value = mock_es_client
 
@@ -321,7 +345,7 @@ def test_create_datasets_not_enough_records_error(
             }
         }
 
-        with patch("src.tasks.tasks.settings") as mock_settings:
+        with patch("src.lib.integration.record_exporter.settings") as mock_settings:
             mock_settings.data_split_config.min_total_records = 10  # Set high minimum
             mock_settings.data_split_config.limit = 100
             mock_settings.data_split_config.eval_size = 1
@@ -414,7 +438,7 @@ def test_create_datasets_specific_malformed_records(
 
     flywheel_run_id, mongo_db = create_flywheel_run
 
-    with patch("src.tasks.tasks.get_es_client") as mock_get_es_client:
+    with patch("src.lib.integration.record_exporter.get_es_client") as mock_get_es_client:
         mock_es_client = MagicMock()
         mock_get_es_client.return_value = mock_es_client
 
@@ -455,7 +479,7 @@ def test_create_datasets_specific_malformed_records(
             }
         }
 
-        with patch("src.tasks.tasks.settings") as mock_settings:
+        with patch("src.lib.integration.record_exporter.settings") as mock_settings:
             # Configure settings
             mock_settings.data_split_config.min_total_records = 5
             mock_settings.data_split_config.limit = 100

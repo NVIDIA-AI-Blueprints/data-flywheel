@@ -24,7 +24,7 @@ services:
     restart: always
 
   flower:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc3}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile

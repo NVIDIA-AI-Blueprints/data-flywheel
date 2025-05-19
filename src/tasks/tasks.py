@@ -12,15 +12,17 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-import json
 import os
+import time
+from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from bson import ObjectId
 from celery import Celery, chain, group, signals
 
-from src.api.db import get_db, init_db
+from src.api.db import init_db
+from src.api.db_manager import TaskDBManager
 from src.api.models import (
     DatasetType,
     EvalType,
@@ -37,20 +39,19 @@ from src.api.models import (
 from src.api.schemas import DeploymentStatus
 from src.config import NIMConfig, settings
 from src.lib.flywheel.util import (
-    format_training_data,
-    generate_icl_records,
     identify_workload_type,
-    split_records,
-    validate_records,
 )
-from src.lib.integration.es_client import ES_COLLECTION_NAME, get_es_client
+from src.lib.integration.dataset_creator import DatasetCreator
+from src.lib.integration.record_exporter import RecordExporter
 from src.lib.nemo.customizer import Customizer
-from src.lib.nemo.data_uploader import DataUploader
 from src.lib.nemo.dms_client import DMSClient
 from src.lib.nemo.evaluator import Evaluator
 from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.tasks")
+
+# Centralised DB helper - keeps Mongo specifics out of individual tasks
+db_manager = TaskDBManager()
 
 # Initialize Celery
 celery_app = Celery(
@@ -95,223 +96,69 @@ def create_datasets(
         output_dataset_prefix: Optional prefix for dataset names
     """
     try:
-        logger.info(f"Pulling data from Elasticsearch for workload {workload_id}")
-        # Define the search query
-        es_client = get_es_client()
-        search_query = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"match": {"client_id": client_id}},
-                        {"match": {"workload_id": workload_id}},
-                    ]
-                }
-            },
-            "sort": [{"timestamp": {"order": "desc"}}],
-            "size": settings.data_split_config.limit,
-        }
-
-        # Execute the search query
-        response = es_client.search(index=ES_COLLECTION_NAME, body=search_query)
-
-        # Check if any records were found
-        if not response["hits"]["hits"]:
-            msg = f"No records found for the given client_id {client_id} and workload_id {workload_id}"
-            logger.error(msg)
-            raise ValueError(msg)
-
-        # Extract the records
-        records = [hit["_source"] for hit in response["hits"]["hits"]]
-        logger.info(
-            f"Found {len(records)} records for client_id {client_id} and workload_id {workload_id}"
-        )
+        records = RecordExporter().get_records(client_id, workload_id)
 
         workload_type = identify_workload_type(records)
-        logger.info(f"Workload type: {workload_type}")
 
-        # Deduplicate records based on request.messages and response.choices
-        unique_records = {}
-        for record in records:
-            # Convert dictionaries to JSON strings for hashing
-            messages_str = json.dumps(record.get("request", {}).get("messages", []), sort_keys=True)
-            choices_str = json.dumps(record.get("response", {}).get("choices", []), sort_keys=True)
-            key = (messages_str, choices_str)
-            if key not in unique_records:
-                unique_records[key] = record
-
-        # Update records with deduplicated records
-        records = list(unique_records.values())
-
-        logger.info(f"Deduplicated down to {len(records)} records for workload {workload_id}")
-
-        validate_records(records, workload_id, settings.data_split_config)
-
-        # Update FlywheelRun document with number of records
-        db = get_db()
-        db.flywheel_runs.update_one(
-            {"_id": ObjectId(flywheel_run_id)}, {"$set": {"num_records": len(records)}}
-        )
-
-        # split the jsonl data into train and val
-        eval_records, train_records, val_records = split_records(
-            records, settings.data_split_config
-        )
-        logger.info(
-            f"Split {len(records)} records into {len(eval_records)} eval, {len(train_records)} train, {len(val_records)} val"
-        )
-        ## format the training data
-        train_records = format_training_data(train_records)
-        val_records = format_training_data(val_records)
-
-        # Convert all record sets to JSONL format
-        eval_jsonl_data, train_jsonl_data, val_jsonl_data = (
-            "\n".join(json.dumps(record) for record in records)
-            for records in [eval_records, train_records, val_records]
-        )
-
-        records = {}
-        ts = int(datetime.utcnow().timestamp())
-
-        eval_dataset_name = f"flywheel-eval-{output_dataset_prefix + '-' if output_dataset_prefix else ''}{workload_id}-{ts}"
-        eval_uploader = DataUploader(
-            namespace=settings.nmp_config.nmp_namespace, dataset_name=eval_dataset_name
-        )
-        eval_uploader.upload_data(eval_jsonl_data, "eval_data.jsonl")
-
-        icl_records = generate_icl_records(eval_records)
-        icl_jsonl_data = "\n".join(json.dumps(record) for record in icl_records)
-        icl_dataset_name = f"flywheel-icl-{output_dataset_prefix + '-' if output_dataset_prefix else ''}{workload_id}-{ts}"
-        icl_uploader = DataUploader(
-            namespace=settings.nmp_config.nmp_namespace, dataset_name=icl_dataset_name
-        )
-        icl_uploader.upload_data(icl_jsonl_data, "eval_data.jsonl")
-
-        train_dataset_name = f"flywheel-train-{output_dataset_prefix + '-' if output_dataset_prefix else ''}{workload_id}-{ts}"
-        train_uploader = DataUploader(
-            namespace=settings.nmp_config.nmp_namespace, dataset_name=train_dataset_name
-        )
-        train_uploader.upload_data(train_jsonl_data, "training/train_data.jsonl")
-        train_uploader.upload_data(val_jsonl_data, "validation/val_data.jsonl")
-
-        # update the flywheel run with the dataset names
-        db.flywheel_runs.update_one(
-            {"_id": ObjectId(flywheel_run_id)},
-            {
-                "$set": {
-                    "datasets": [
-                        {
-                            "name": eval_dataset_name,
-                            "num_records": len(eval_records),
-                            "nmp_uri": eval_uploader.get_file_uri(),
-                        },
-                        {
-                            "name": icl_dataset_name,
-                            "num_records": len(icl_records),
-                            "nmp_uri": icl_uploader.get_file_uri(),
-                        },
-                        {
-                            "name": train_dataset_name,
-                            "num_records": len(train_records),
-                            "nmp_uri": train_uploader.get_file_uri(),
-                        },
-                    ],
-                }
-            },
-        )
+        datasets = DatasetCreator(
+            records, flywheel_run_id, output_dataset_prefix, workload_id
+        ).create_datasets()
 
         return TaskResult(
             workload_id=workload_id,
             flywheel_run_id=flywheel_run_id,
             client_id=client_id,
             workload_type=workload_type,
-            datasets={
-                DatasetType.BASE: eval_dataset_name,
-                DatasetType.ICL: icl_dataset_name,  # as testing record are converted to icl records and uploaded
-                DatasetType.TRAIN: train_dataset_name,
-            },
+            datasets=datasets,
         )
     except Exception as e:
         error_msg = f"Error creating datasets: {e!s}"
         logger.error(error_msg)
-        # Update flywheel run with error
-        db = get_db()
-        db.flywheel_runs.update_one(
-            {"_id": ObjectId(flywheel_run_id)},
-            {"$set": {"error": error_msg, "status": "error"}},
-        )
+        # Update flywheel run with error via the DB manager
+        db_manager.mark_flywheel_run_error(flywheel_run_id, error_msg)
         # Return a TaskResult so that downstream tasks can gracefully short-circuit
         raise e
 
 
-@celery_app.task(name="tasks.spin_up_llm_judge", pydantic=True)
-def spin_up_llm_judge(previous_result: TaskResult) -> TaskResult:
+@celery_app.task(name="tasks.wait_for_llm_as_judge", pydantic=True)
+def wait_for_llm_as_judge(previous_result: TaskResult) -> TaskResult:
     """
-    Spin up a LLM Judge instance.
+    Ensures LLM as judge is ready
     Takes the result from the previous task as input.
     """
-    try:
-        # This is a quirk of celery, we need to assert the types here
-        # https://github.com/celery/celery/blob/main/examples/pydantic/tasks.py
-        assert isinstance(previous_result, TaskResult)
-        judge_cfg = settings.llm_judge_config
-        if judge_cfg.is_remote():
-            logger.info("Remote LLM Judge will be used")
-            previous_result.llm_judge_config = None
-            return previous_result
-
-        llm_judge_config = judge_cfg.get_local_nim_config()
-        previous_result.llm_judge_config = llm_judge_config
-
-        # Create NIM run in the nims collection
-        db = get_db()
-        llm_judge_run = LLMJudgeRun(
-            flywheel_run_id=ObjectId(previous_result.flywheel_run_id),
-            model_name=llm_judge_config.model_name,
-        )
-
-        # Insert into llm_judge_runs collection
-        result = db.llm_judge_runs.insert_one(llm_judge_run.to_mongo())
-        llm_judge_run.id = result.inserted_id
-
-        dms_client = DMSClient(nmp_config=settings.nmp_config, nim=llm_judge_config)
-
-        if not dms_client.is_deployed():
-            logger.info(f"Deploying LLM Judge {llm_judge_config.model_name}")
-
-            try:
-                dms_client.deploy_model()
-            except Exception as e:
-                logger.error(f"Error deploying LLM Judge {llm_judge_config.model_name}: {e}")
-                raise e
-        else:
-            logger.info(f"LLM Judge {llm_judge_config.model_name} is already deployed")
-
-        def progress_callback(status: dict):
-            db.llm_judge_runs.update_one(
-                {"_id": llm_judge_run.id},
-                {"$set": {"deployment_status": DeploymentStatus(status.get("status", "unknown"))}},
-            )
-
-        dms_client.wait_for_deployment(progress_callback=progress_callback)
-
-        dms_client.wait_for_model_sync(llm_judge_config.target_model_for_evaluation())
-
+    # This is a quirk of celery, we need to assert the types here
+    # https://github.com/celery/celery/blob/main/examples/pydantic/tasks.py
+    assert isinstance(previous_result, TaskResult)
+    judge_cfg = settings.llm_judge_config
+    if judge_cfg.is_remote():
+        logger.info("Remote LLM Judge will be used")
+        previous_result.llm_judge_config = None
         return previous_result
-    except Exception as e:
-        error_msg = f"Error spinning up LLM Judge: {e!s}"
-        logger.error(error_msg)
-        db = get_db()
-        llm_judge_run = LLMJudgeRun(
-            flywheel_run_id=ObjectId(previous_result.flywheel_run_id),
-            model_name=llm_judge_config.model_name,
+
+    llm_judge_config = judge_cfg.get_local_nim_config()
+    previous_result.llm_judge_config = llm_judge_config
+
+    # Create LLM judge run using TaskDBManager
+    llm_judge_run = LLMJudgeRun(
+        flywheel_run_id=ObjectId(previous_result.flywheel_run_id),
+        model_name=llm_judge_config.model_name,
+    )
+
+    # Insert using TaskDBManager
+    llm_judge_run.id = db_manager.create_llm_judge_run(llm_judge_run)
+
+    dms_client = DMSClient(nmp_config=settings.nmp_config, nim=llm_judge_config)
+
+    def progress_callback(status: dict):
+        db_manager.update_llm_judge_deployment_status(
+            llm_judge_run.id,
+            DeploymentStatus(status.get("status", "unknown")),
         )
-        # Update llm_judge_runs with error
-        db.llm_judge_runs.update_one(
-            {"_id": llm_judge_run.id},
-            {"$set": {"error": error_msg, "deployment_status": DeploymentStatus.FAILED}},
-        )
-        dms_client.shutdown_deployment()
-        raise e
+
+    dms_client.wait_for_deployment(progress_callback=progress_callback)
+    dms_client.wait_for_model_sync(llm_judge_config.target_model_for_evaluation())
+
+    return previous_result
 
 
 @celery_app.task(name="tasks.spin_up_nim", pydantic=True)
@@ -336,7 +183,6 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
     previous_result.nim = nim_config
 
     # Create NIM run in the nims collection
-    db = get_db()
     start_time = datetime.utcnow()
     nim_run = NIMRun(
         flywheel_run_id=ObjectId(previous_result.flywheel_run_id),
@@ -347,11 +193,9 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
         runtime_seconds=0,  # Will be updated when evaluations complete
     )
 
-    # Insert into nims collection
-    result = db.nims.insert_one(nim_run.to_mongo())
-    nim_run.id = result.inserted_id
-
-    db.nims.update_one({"_id": nim_run.id}, {"$set": {"status": NIMRunStatus.DEPLOYING}})
+    # Persist and mark status via DB manager
+    nim_run.id = db_manager.create_nim_run(nim_run)
+    db_manager.set_nim_status(nim_run.id, NIMRunStatus.DEPLOYING)
 
     try:
         dms_client = DMSClient(nmp_config=settings.nmp_config, nim=nim_config)
@@ -363,41 +207,34 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
                 dms_client.deploy_model()
             except Exception as e:
                 logger.error(f"Error deploying NIM {nim_config.model_name}: {e}")
-                db.nims.update_one(
-                    {"_id": nim_run.id}, {"$set": {"status": NIMRunStatus.ERROR, "error": str(e)}}
-                )
+                db_manager.set_nim_status(nim_run.id, NIMRunStatus.ERROR, error=str(e))
                 previous_result.error = str(e)
                 return previous_result
         else:
             logger.info(f"NIM {nim_config.model_name} is already deployed")
 
         def progress_callback(status: dict):
-            db.nims.update_one(
-                {"_id": nim_run.id},
-                {"$set": {"deployment_status": DeploymentStatus(status.get("status", "unknown"))}},
+            db_manager.update_nim_deployment_status(
+                nim_run.id,
+                DeploymentStatus(status.get("status", "unknown")),
             )
 
         dms_client.wait_for_deployment(progress_callback=progress_callback)
 
         dms_client.wait_for_model_sync(nim_config.target_model_for_evaluation())
 
-        db.nims.update_one({"_id": nim_run.id}, {"$set": {"status": NIMRunStatus.RUNNING}})
+        db_manager.set_nim_status(nim_run.id, NIMRunStatus.RUNNING)
 
         return previous_result
     except Exception as e:
         error_msg = f"Error spinning up NIM: {e!s}"
         logger.error(error_msg)
-        db = get_db()
-        # Update nims collection with error
-        db.nims.update_one(
-            {"_id": nim_run.id},
-            {
-                "$set": {
-                    "error": error_msg,
-                    "status": NIMRunStatus.ERROR,
-                    "deployment_status": DeploymentStatus.FAILED,
-                }
-            },
+        # Persist error on NIM run
+        db_manager.set_nim_status(
+            nim_run.id,
+            NIMRunStatus.ERROR,
+            error=error_msg,
+            deployment_status=DeploymentStatus.FAILED,
         )
         dms_client.shutdown_deployment()
         previous_result.error = error_msg
@@ -436,12 +273,9 @@ def run_generic_eval(
 
     for tool_eval_type in tool_eval_types:
         # Find the NIM run for this model
-        db = get_db()
-        nim_run = db.nims.find_one(
-            {
-                "flywheel_run_id": ObjectId(previous_result.flywheel_run_id),
-                "model_name": previous_result.nim.model_name,
-            }
+        nim_run = db_manager.find_nim_run(
+            previous_result.flywheel_run_id,
+            previous_result.nim.model_name,
         )
         if not nim_run:
             msg = f"No NIM run found for model {previous_result.nim.model_name}"
@@ -460,18 +294,18 @@ def run_generic_eval(
         )
 
         # Add evaluation to the database
-        db.evaluations.insert_one(evaluation.to_mongo())
+        db_manager.insert_evaluation(evaluation)
 
         # Fix: Create closure with bound variables
-        def make_progress_callback(db_instance, eval_instance):
+        def make_progress_callback(manager: TaskDBManager, eval_instance):
             def callback(update_data):
                 """Update evaluation document with progress"""
-                db_instance.evaluations.update_one({"_id": eval_instance.id}, {"$set": update_data})
+                manager.update_evaluation(eval_instance.id, update_data)
 
             return callback
 
         # Create callback with properly bound variables
-        progress_callback = make_progress_callback(db, evaluation)
+        progress_callback = make_progress_callback(db_manager, evaluation)
 
         # Run the evaluation
         try:
@@ -508,14 +342,12 @@ def run_generic_eval(
         except Exception as e:
             error_msg = f"Error running {eval_type} evaluation: {e!s}"
             logger.error(error_msg)
-            db.evaluations.update_one(
-                {"_id": evaluation.id},
+            db_manager.update_evaluation(
+                evaluation.id,
                 {
-                    "$set": {
-                        "error": error_msg,
-                        "finished_at": datetime.utcnow(),
-                        "progress": 0.0,
-                    }
+                    "error": error_msg,
+                    "finished_at": datetime.utcnow(),
+                    "progress": 0.0,
                 },
             )
             previous_result.error = error_msg
@@ -580,16 +412,12 @@ def run_generic_eval(
         except Exception as e:
             error_msg = f"Error running {eval_type} evaluation: {e!s}"
             logger.error(error_msg)
-            db = get_db()
-            # Update evaluation document with error
-            db.evaluations.update_one(
-                {"_id": job["evaluation"].id},
+            db_manager.update_evaluation(
+                job["evaluation"].id,
                 {
-                    "$set": {
-                        "error": error_msg,
-                        "finished_at": datetime.utcnow(),
-                        "progress": 0.0,
-                    }
+                    "error": error_msg,
+                    "finished_at": datetime.utcnow(),
+                    "progress": 0.0,
                 },
             )
             # no need to raise error here, the error is captured, let the task continue to spin down the deployment
@@ -623,12 +451,9 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
     )
 
     # Find the NIM run
-    db = get_db()
-    nim_run = db.nims.find_one(
-        {
-            "flywheel_run_id": ObjectId(previous_result.flywheel_run_id),
-            "model_name": previous_result.nim.model_name,
-        }
+    nim_run = db_manager.find_nim_run(
+        previous_result.flywheel_run_id,
+        previous_result.nim.model_name,
     )
     if not nim_run:
         msg = f"No NIM run found for model {target_llm_model}"
@@ -651,11 +476,11 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
     )
 
     # Add customization to database
-    db.customizations.insert_one(customization.to_mongo())
+    db_manager.insert_customization(customization)
 
     def progress_callback(update_data):
         """Update customization document with progress"""
-        db.customizations.update_one({"_id": customization.id}, {"$set": update_data})
+        db_manager.update_customization(customization.id, update_data)
 
     output_model_name = f"customized-{target_llm_model}".replace("/", "-")
 
@@ -673,9 +498,7 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
 
         # update uri in customization
         customization.nmp_uri = customizer.get_job_uri(customization_job_id)
-        db.customizations.update_one(
-            {"_id": customization.id}, {"$set": {"nmp_uri": customization.nmp_uri}}
-        )
+        db_manager.update_customization(customization.id, {"nmp_uri": customization.nmp_uri})
 
         # Update customization with model name
         progress_callback({"customized_model": customized_model})
@@ -706,16 +529,12 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
     except Exception as e:
         error_msg = f"Error starting customization: {e!s}"
         logger.error(error_msg)
-        db = get_db()
-        # Update customization document with error
-        db.customizations.update_one(
-            {"_id": customization.id},
+        db_manager.update_customization(
+            customization.id,
             {
-                "$set": {
-                    "error": error_msg,
-                    "finished_at": datetime.utcnow(),
-                    "progress": 0.0,
-                }
+                "error": error_msg,
+                "finished_at": datetime.utcnow(),
+                "progress": 0.0,
             },
         )
         previous_result.error = error_msg
@@ -742,9 +561,9 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
         workload_id = previous_result.workload_id
 
         # Find the customization document
-        db = get_db()
-        customization_doc = db.customizations.find_one(
-            {"workload_id": workload_id, "customized_model": customization_model}
+        customization_doc = db_manager.find_customization(
+            workload_id,
+            customization_model,
         )
         if not customization_doc:
             msg = f"No customization found for model {customization_model}"
@@ -770,125 +589,111 @@ def shutdown_deployment(previous_results: list[TaskResult] | TaskResult) -> Task
     """Shutdown the NIM deployment.
 
     Args:
-        previous_results: Either a single TaskResult or a list of TaskResults from a group
+        previous_results: Either a single ``TaskResult`` or a list of them produced by a ``group``.
     """
 
-    # Handle both single TaskResult and list of results from group
+    previous_result: TaskResult | None = None
     try:
-        if isinstance(previous_results, list):
-            # Take the last successful result that has nim config
-            for result in reversed(previous_results):
-                if isinstance(result, dict):
-                    result = TaskResult(**result)
-                if result and hasattr(result, "nim") and result.nim:
-                    previous_result = result
-                    break
-            else:
-                msg = "No valid TaskResult with NIM config found in results"
-                logger.error(msg)
-                raise ValueError(msg)
-        else:
-            previous_result = (
-                previous_results
-                if isinstance(previous_results, TaskResult)
-                else TaskResult(**previous_results)
+        previous_result = _extract_previous_result(
+            previous_results,
+            validator=lambda r: getattr(r, "nim", None) is not None,
+            error_msg="No valid TaskResult with NIM config found in results",
+        )
+        if (
+            previous_result.llm_judge_config
+            and previous_result.llm_judge_config.model_name == previous_result.nim.model_name
+        ):
+            logger.info(
+                f"Skip shutting down NIM {previous_result.nim.model_name} as it is the same as the LLM Judge"
             )
+            return previous_result
+
         dms_client = DMSClient(nmp_config=settings.nmp_config, nim=previous_result.nim)
         dms_client.shutdown_deployment()
+
+        # Mark the NIM run as completed now that the deployment is shut down
+        try:
+            nim_run_doc = db_manager.find_nim_run(
+                previous_result.flywheel_run_id,
+                previous_result.nim.model_name,
+            )
+            if nim_run_doc:
+                finished_time = datetime.utcnow()
+                started_at = nim_run_doc.get("started_at")
+                runtime_seconds: float = 0.0
+                if started_at:
+                    runtime_seconds = (finished_time - started_at).total_seconds()
+
+                db_manager.mark_nim_completed(nim_run_doc["_id"], finished_time, runtime_seconds)
+        except Exception as update_err:
+            logger.error("Failed to update NIM run status to COMPLETED: %s", update_err)
 
         return previous_result
     except Exception as e:
         error_msg = f"Error shutting down NIM deployment: {e!s}"
         logger.error(error_msg)
-        db = get_db()
-        nim_run = db.nims.find_one(
-            {
-                "flywheel_run_id": ObjectId(previous_result.flywheel_run_id),
-                "model_name": previous_result.nim.model_name,
-            }
+
+        # ``previous_result`` may not be available if extraction failed.
+        previous_result = locals().get("previous_result")  # type: ignore[arg-type]
+        if not previous_result:
+            return previous_result  # type: ignore[return-value]
+
+        nim_run_doc = db_manager.find_nim_run(
+            previous_result.flywheel_run_id,
+            previous_result.nim.model_name,
         )
-        if not nim_run:
+        if not nim_run_doc:
             logger.error(
                 f"Could not find NIM run for flywheel_run_id: {previous_result.flywheel_run_id}"
             )
             return previous_result
 
-        nim_run = NIMRun.from_mongo(nim_run)
         # Update nim document with error
-        db.nims.update_one(
-            {"_id": nim_run.id},
-            {
-                "$set": {
-                    "error": error_msg,
-                    "status": NIMRunStatus.ERROR,
-                    "deployment_status": DeploymentStatus.FAILED,
-                }
-            },
-        )
+        db_manager.mark_nim_error(nim_run_doc["_id"], error_msg)
         previous_result.error = error_msg
     return previous_result
 
 
-@celery_app.task(name="tasks.shutdown_llm_judge_deployment", pydantic=True)
-def shutdown_llm_judge_deployment(previous_results: list[TaskResult] | TaskResult) -> TaskResult:
-    """Shutdown the LLM Judge deployment.
+@celery_app.task(name="tasks.finalize_flywheel_run", pydantic=True)
+def finalize_flywheel_run(previous_results: list[TaskResult] | TaskResult) -> TaskResult:
+    """Finalize the Flywheel run by setting its ``finished_at`` timestamp.
 
     Args:
-        previous_results: Either a single TaskResult or a list of TaskResults from a group
+        previous_results: Either a single ``TaskResult`` or a list returned by a ``group``.
     """
+
+    previous_result: TaskResult | None = None
     try:
-        # Handle both single TaskResult and list of results from group
-        if isinstance(previous_results, list):
-            # Take the first result since they should all have the same llm_judge_config
-            result = previous_results[0]
-            previous_result = result if isinstance(result, TaskResult) else TaskResult(**result)
-        else:
-            previous_result = (
-                previous_results
-                if isinstance(previous_results, TaskResult)
-                else TaskResult(**previous_results)
-            )
-        # Update the flywheel run to finished
-        db = get_db()
-        db.flywheel_runs.update_one(
-            {"_id": ObjectId(previous_result.flywheel_run_id)},
-            {"$set": {"finished_at": datetime.utcnow()}},
+        previous_result = _extract_previous_result(
+            previous_results,
+            validator=lambda r: bool(r.flywheel_run_id),
+            error_msg="Could not determine flywheel_run_id when finalizing Flywheel run",
         )
-        if not previous_result.llm_judge_config:
-            logger.info("Remote LLM Judge is used, skipping shutdown")
-            return previous_result
+        # sleeping for 2 minutes to allow the deployment to be deleted
+        time.sleep(120)
+        # Delegate to the shared DB helper so we keep raw MongoDB access
+        # centralised in a single place.
+        db_manager.mark_flywheel_run_completed(previous_result.flywheel_run_id, datetime.utcnow())
 
-        dms_client = DMSClient(nmp_config=settings.nmp_config, nim=previous_result.llm_judge_config)
-        dms_client.shutdown_deployment()
+        logger.info(
+            "Flywheel run %s marked as finished at %s",
+            previous_result.flywheel_run_id,
+            datetime.utcnow(),
+        )
+        return previous_result
     except Exception as e:
-        error_msg = f"Error shutting down LLM Judge deployment: {e!s}"
+        error_msg = f"Error finalizing Flywheel run: {e!s}"
         logger.error(error_msg)
-        db = get_db()
-        # Update llm_judge_runs with error
-        llm_judge_run = db.llm_judge_runs.find_one(
-            {"flywheel_run_id": ObjectId(previous_result.flywheel_run_id)}
-        )
-        if not llm_judge_run:
-            logger.error(
-                f"Could not find LLM Judge run for flywheel_run_id: {previous_result.flywheel_run_id}"
-            )
+        if previous_result:
+            previous_result.error = error_msg
             return previous_result
-
-        llm_judge_run = LLMJudgeRun.from_mongo(llm_judge_run)
-        db.llm_judge_runs.update_one(
-            {"_id": llm_judge_run.id},
-            {
-                "$set": {
-                    "error": error_msg,
-                    "deployment_status": DeploymentStatus.FAILED,
-                }
-            },
-        )
-        previous_result.error = error_msg
-    return previous_result
+        # sleeping for 2 minutes to allow the deployment to be deleted
+        time.sleep(120)
+        # If we cannot obtain previous_result, construct a minimal one
+        return TaskResult(error=error_msg)
 
 
-@celery_app.task(name="tasks.run_nim_workflow_dag", pydantic=True)
+@celery_app.task(name="tasks.run_nim_workflow_dag", pydantic=True, queue="parent_queue")
 def run_nim_workflow_dag(workload_id: str, flywheel_run_id: str, client_id: str) -> dict:
     """
     Execute the NIM workflow as a DAG where:
@@ -922,11 +727,22 @@ def run_nim_workflow_dag(workload_id: str, flywheel_run_id: str, client_id: str)
         create_datasets.s(
             workload_id=workload_id, flywheel_run_id=flywheel_run_id, client_id=client_id
         ),
-        spin_up_llm_judge.s(),  ## spin up llm-judge
+        wait_for_llm_as_judge.s(),  ## spin up llm-judge
         chain(*nim_chains),
-        shutdown_llm_judge_deployment.s(),
+        finalize_flywheel_run.s(),
     )
-    return workflow.apply_async(queue="parent_queue")
+
+    # Submit the workflow to Celery and block until completion.
+    # The application is not currently aware of how
+    # many GPUs are available to it, so it serializes all calls
+    # to `run_nim_workflow_dag` to prevent spinning up NIMs from taking
+    # up all the GPUs and not leaving any available for customizations.
+    # The following call to `get` will block. Since this task is running
+    # on the ``parent_queue`` it will be serialized with all other tasks
+    # on that queue. All other tasks run on the default celery queue,
+    # which has a concurrency limit of 50.
+    async_result = workflow.apply_async()
+    return async_result.get(disable_sync_subtasks=False)
 
 
 # -------------------------------------------------------------
@@ -951,3 +767,61 @@ def _should_skip_stage(previous_result: TaskResult | None, stage_name: str) -> b
         )
         return True
     return False
+
+
+# -------------------------------------------------------------
+# Shared helpers
+# -------------------------------------------------------------
+
+
+def _extract_previous_result(
+    previous_results: list[TaskResult] | TaskResult | dict,
+    *,
+    validator: Callable[[TaskResult], bool] | None = None,
+    error_msg: str = "No valid TaskResult found",
+) -> TaskResult:
+    """Return a single ``TaskResult`` from *previous_results*.
+
+    Celery tasks can receive either a single ``TaskResult`` instance, a raw
+    ``dict`` serialized version of it, or a list containing any mix of those.
+    This helper normalises that input so downstream code can safely assume it
+    has a *TaskResult* instance to work with.
+
+    If *previous_results* is a list the items are inspected **in reverse
+    order** (i.e. most-recent first) until one satisfies the *validator*
+    callable.  When *validator* is *None* the first item is returned.
+
+    Args:
+        previous_results: The value passed by the upstream Celery task.
+        validator: Optional callable that returns *True* for a result that
+            should be selected.
+        error_msg: Message to include in the raised ``ValueError`` when no
+            suitable result can be found.
+
+    Returns:
+        TaskResult: The selected result.
+
+    Raises:
+        ValueError: If *previous_results* does not contain a suitable
+            ``TaskResult``.
+    """
+
+    # Fast-path: a single object (TaskResult or dict)
+    if not isinstance(previous_results, list):
+        if isinstance(previous_results, dict):
+            return TaskResult(**previous_results)
+        assert isinstance(previous_results, TaskResult)
+        return previous_results
+
+    # It is a list - iterate from the end (latest first)
+    for result in reversed(previous_results):
+        if isinstance(result, dict):
+            result = TaskResult(**result)
+        if not isinstance(result, TaskResult):
+            continue
+        if validator is None or validator(result):
+            return result
+
+    # Nothing matched - raise so caller can handle
+    logger.error(error_msg)
+    raise ValueError(error_msg)

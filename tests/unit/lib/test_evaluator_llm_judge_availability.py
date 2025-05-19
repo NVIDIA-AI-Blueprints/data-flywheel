@@ -80,11 +80,17 @@ def test_validate_llm_judge_availability_local_skips_remote_call(monkeypatch):
     mock_post = MagicMock()
     monkeypatch.setattr("requests.post", mock_post)
 
-    # Act - should not raise nor invoke the HTTP call
-    Evaluator().validate_llm_judge_availability()
+    # Patch Evaluator.spin_up_llm_judge to avoid external DMS interactions
+    mock_spin_up = MagicMock(return_value=True)
+    monkeypatch.setattr(Evaluator, "spin_up_llm_judge", mock_spin_up)
+
+    # Act - should return True and avoid any HTTP calls
+    result = Evaluator().validate_llm_judge_availability()
 
     # Assert
     mock_post.assert_not_called()
+    mock_spin_up.assert_called_once()
+    assert result is True
 
 
 def test_validate_llm_judge_availability_remote_happy_path(monkeypatch):
@@ -102,14 +108,15 @@ def test_validate_llm_judge_availability_remote_happy_path(monkeypatch):
     mock_post = MagicMock(return_value=mock_response)
     monkeypatch.setattr("requests.post", mock_post)
 
-    # Act - should *not* raise
-    Evaluator().validate_llm_judge_availability()
+    # Act - should return True indicating the judge is reachable
+    result = Evaluator().validate_llm_judge_availability()
 
-    # Assert - verify the outbound request was built correctly
+    # Assert - verify the outbound request was built correctly and a successful result is propagated
     mock_post.assert_called_once()
     _, kwargs = mock_post.call_args
     assert kwargs["json"]["model"] == remote_cfg.model_id
     assert kwargs["headers"]["Authorization"] == f"Bearer {remote_cfg.api_key}"
+    assert result is True
 
 
 @pytest.mark.parametrize(
@@ -138,7 +145,7 @@ def test_validate_llm_judge_availability_remote_missing_config(
 
 @pytest.mark.parametrize("status_code", [400, 500])
 def test_validate_llm_judge_availability_remote_http_error(monkeypatch, status_code):
-    """Non-200 status codes returned by the judge endpoint should result in an exception."""
+    """Non-200 status codes returned by the judge endpoint should result in a health-check failure (False)."""
 
     remote_cfg = make_remote_judge_config()
     monkeypatch.setattr("src.config.settings.llm_judge_config", remote_cfg)
@@ -149,12 +156,15 @@ def test_validate_llm_judge_availability_remote_http_error(monkeypatch, status_c
     mock_post = MagicMock(return_value=mock_response)
     monkeypatch.setattr("requests.post", mock_post)
 
-    with pytest.raises(RuntimeError, match="not reachable"):
-        Evaluator().validate_llm_judge_availability()
+    # Act
+    result = Evaluator().validate_llm_judge_availability()
+
+    # Assert - should return False indicating the judge is not reachable
+    assert result is False
 
 
 def test_validate_llm_judge_availability_remote_unexpected_payload(monkeypatch):
-    """If the response JSON lacks a ``choices`` key an exception should be raised."""
+    """If the response JSON lacks a ``choices`` key the health-check should return False."""
 
     remote_cfg = make_remote_judge_config()
     monkeypatch.setattr("src.config.settings.llm_judge_config", remote_cfg)
@@ -166,5 +176,8 @@ def test_validate_llm_judge_availability_remote_unexpected_payload(monkeypatch):
     mock_post = MagicMock(return_value=mock_response)
     monkeypatch.setattr("requests.post", mock_post)
 
-    with pytest.raises(RuntimeError, match="not reachable"):
-        Evaluator().validate_llm_judge_availability()
+    # Act
+    result = Evaluator().validate_llm_judge_availability()
+
+    # Assert - should return False due to unexpected payload structure
+    assert result is False

@@ -19,6 +19,7 @@ import requests
 
 from src.api.models import NIMEvaluation, ToolEvalType, WorkloadClassification
 from src.config import NIMConfig, settings
+from src.lib.nemo.dms_client import DMSClient
 from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.nemo.evaluator")
@@ -109,7 +110,25 @@ class Evaluator:
         else:
             self.judge_model_config = judge_cfg.get_local_nim_config().model_name
 
-    def validate_llm_judge_availability(self) -> None:
+    def spin_up_llm_judge(self) -> bool:
+        judge_cfg = settings.llm_judge_config
+        llm_judge_config = judge_cfg.get_local_nim_config()
+        dms_client = DMSClient(nmp_config=settings.nmp_config, nim=llm_judge_config)
+
+        if not dms_client.is_deployed():
+            logger.info(f"Deploying LLM Judge {llm_judge_config.model_name}")
+
+            try:
+                dms_client.deploy_model()
+            except Exception as e:
+                logger.error(f"Error deploying LLM Judge {llm_judge_config.model_name}: {e}")
+                raise e
+        else:
+            logger.info(f"LLM Judge {llm_judge_config.model_name} is already deployed")
+
+        return True
+
+    def validate_llm_judge_availability(self) -> bool:
         """Ensure the configured LLM judge endpoint is reachable.
 
         If the judge is configured as a *remote* service we make a minimal
@@ -124,7 +143,7 @@ class Evaluator:
         # No check needed for local (NIM) judge
         # it will be spun-up inside NMP
         if not judge_cfg.is_remote():
-            return
+            return self.spin_up_llm_judge()
 
         url = judge_cfg.url
         model_id = judge_cfg.model_id
@@ -146,23 +165,21 @@ class Evaluator:
         try:
             resp = requests.post(url, json=payload, headers=headers)
             if resp.status_code != 200:
-                raise RuntimeError(
-                    f"Remote LLM judge health-check failed - status {resp.status_code}: {resp.text}"
-                )
+                return False
 
             # Basic structural validation - we expect a JSON with a 'choices' field
             data = resp.json()
             if "choices" not in data:
-                raise RuntimeError(
-                    "Remote LLM judge health-check succeeded but response format is unexpected."
-                )
+                return False
 
             logger.info("Remote LLM judge is reachable and responded successfully.")
 
-        except Exception as exc:
+            return True
+
+        except Exception:
             logger.exception("Unable to reach remote LLM judge - aborting worker startup.")
             # Re-raise to fail fast (Celery worker will exit)
-            raise RuntimeError("Remote LLM judge is not reachable. See logs for details.") from exc
+            return False
 
     def get_judge_metrics(self) -> dict[str, Any]:
         return {

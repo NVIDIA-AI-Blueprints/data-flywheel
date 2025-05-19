@@ -31,27 +31,34 @@ from src.api.models import (
     ToolEvalType,
     WorkloadClassification,
 )
-from src.api.schemas import DeploymentStatus
+from src.config import settings  # the singleton created in src.config
 from src.tasks.tasks import (
     create_datasets,
     run_base_eval,
     run_customization_eval,
     run_icl_eval,
     shutdown_deployment,
-    shutdown_llm_judge_deployment,
-    spin_up_llm_judge,
     spin_up_nim,
     start_customization,
 )
 
 
-@pytest.fixture
-def mock_db():
-    """Fixture to mock database operations."""
-    with patch("src.tasks.tasks.get_db") as mock:
-        db_instance = MagicMock()
-        mock.return_value = db_instance
-        yield db_instance
+@pytest.fixture(name="mock_db")
+def fixture_mock_task_db_manager():
+    """Patch the *db_manager* instance used in tasks.py.
+
+    After the recent refactor, Celery tasks no longer access raw pymongo
+    collections; instead they delegate everything to the *TaskDBManager*
+    helper stored as ``src.tasks.tasks.db_manager``.  Patch that singleton so
+    each test can assert against the high-level helper methods.
+    """
+    with patch("src.tasks.tasks.db_manager") as mock:
+        # Provide sensible defaults for the helper methods that return values.
+        mock.create_nim_run.return_value = ObjectId()
+        mock.find_nim_run.return_value = {"_id": ObjectId(), "model_name": "test-model"}
+        mock.insert_evaluation.return_value = ObjectId()
+        mock.insert_customization.return_value = ObjectId()
+        yield mock
 
 
 @pytest.fixture
@@ -64,8 +71,13 @@ def mock_init_db():
 @pytest.fixture
 def mock_data_uploader():
     """Fixture to mock DataUploader."""
-    with patch("src.tasks.tasks.DataUploader") as mock:
+    with patch("src.lib.integration.dataset_creator.DataUploader") as mock:
         mock_instance = MagicMock()
+        # Ensure that `get_file_uri` (used when recording dataset metadata) returns a
+        # plain string.  A raw ``MagicMock`` instance cannot be encoded by BSON and
+        # causes an ``InvalidDocument`` error when the code under test attempts to
+        # update MongoDB.
+        mock_instance.get_file_uri.return_value = "nmp://test-namespace/datasets/dummy.jsonl"
         mock.return_value = mock_instance
         yield mock_instance
 
@@ -82,23 +94,47 @@ def mock_evaluator():
 @pytest.fixture
 def mock_es_client():
     """Fixture to mock Elasticsearch client."""
-    with patch("src.tasks.tasks.get_es_client") as mock:
+    with patch("src.lib.integration.record_exporter.get_es_client") as mock:
         mock_instance = MagicMock()
         mock.return_value = mock_instance
         yield mock_instance
 
 
-@pytest.fixture
-def mock_settings():
-    """Fixture to mock settings."""
-    with patch("src.tasks.tasks.settings") as mock:
-        mock.data_split_config.min_total_records = 1
-        mock.data_split_config.random_seed = 42
-        mock.data_split_config.eval_size = 1
-        mock.data_split_config.val_ratio = 0.25
-        mock.data_split_config.limit = 100
-        mock.nmp_config.nmp_namespace = "test-namespace"
-        yield mock
+# This fixture automatically tweaks global settings for every test so that they
+# use small, deterministic values and a test-specific namespace.  We patch
+# *attributes* on the existing objects where they are mutable, but for frozen
+# Pydantic models (e.g. `NMPConfig`) we replace the entire object with a
+# modified copy generated via `model_copy(update={...})`.
+
+
+@pytest.fixture(autouse=True)
+def tweak_settings(monkeypatch):
+    """Provide deterministic test configuration via the global `settings`."""
+
+    # --- Data-split parameters (fields are *not* frozen) --------------------
+    monkeypatch.setattr(settings.data_split_config, "min_total_records", 1, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "eval_size", 1, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
+    monkeypatch.setattr(settings.data_split_config, "limit", 100, raising=False)
+
+    # --- NMP namespace (field *is* frozen, so create a new object) ----------
+    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
+
+    yield
+
+
+# ---------------------------------------------------------------------------
+# Compatibility: a few tests still request a ``mock_settings`` fixture.  Keep a
+# thin wrapper so they receive the (already-tweaked) global ``settings``.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture(name="mock_settings")
+def fixture_mock_settings():
+    """Return the globally patched `settings` instance used in the tests."""
+    return settings
 
 
 @pytest.fixture
@@ -283,8 +319,8 @@ def test_spin_up_nim(mock_db, mock_init_db, mock_dms_client, valid_nim_config):
         llm_judge_config=None,
     )
 
-    # Configure mock database behavior
-    mock_db.nims.insert_one.return_value.inserted_id = ObjectId()
+    # Configure TaskDBManager behaviour
+    mock_db.create_nim_run.return_value = ObjectId()
 
     spin_up_nim(previous_result, valid_nim_config.model_dump())
 
@@ -294,9 +330,9 @@ def test_spin_up_nim(mock_db, mock_init_db, mock_dms_client, valid_nim_config):
     mock_dms_client.wait_for_deployment.assert_called_once()
     mock_dms_client.wait_for_model_sync.assert_called_once()
 
-    # Verify database operations
-    mock_db.nims.insert_one.assert_called_once()
-    assert mock_db.nims.update_one.call_count >= 2  # Called for status updates
+    # Verify DB-helper interactions
+    mock_db.create_nim_run.assert_called_once()
+    assert mock_db.set_nim_status.call_count >= 2  # status transitions
 
     # No error should be present on the previous_result
     assert previous_result.error is None
@@ -317,8 +353,8 @@ def test_spin_up_nim_deployment_failure(mock_db, mock_init_db, mock_dms_client, 
         llm_judge_config=None,
     )
 
-    # Configure mock database behavior
-    mock_db.nims.insert_one.return_value.inserted_id = ObjectId()
+    # Configure TaskDBManager behaviour
+    mock_db.create_nim_run.return_value = ObjectId()
 
     # Configure DMS client to fail deployment
     mock_dms_client.deploy_model.side_effect = Exception("Deployment failed")
@@ -335,9 +371,9 @@ def test_spin_up_nim_deployment_failure(mock_db, mock_init_db, mock_dms_client, 
     mock_dms_client.wait_for_deployment.assert_not_called()
     mock_dms_client.wait_for_model_sync.assert_not_called()
 
-    # Verify database error status update
-    mock_db.nims.insert_one.assert_called_once()
-    assert mock_db.nims.update_one.call_count >= 2  # Initial status and error update
+    # Verify DB-helper interactions
+    mock_db.create_nim_run.assert_called_once()
+    assert mock_db.set_nim_status.call_count >= 2  # initial + error status
 
 
 def test_spin_up_nim_already_deployed(mock_db, mock_init_db, mock_dms_client, valid_nim_config):
@@ -355,8 +391,8 @@ def test_spin_up_nim_already_deployed(mock_db, mock_init_db, mock_dms_client, va
         llm_judge_config=None,
     )
 
-    # Configure mock database behavior
-    mock_db.nims.insert_one.return_value.inserted_id = ObjectId()
+    # Configure TaskDBManager behaviour
+    mock_db.create_nim_run.return_value = ObjectId()
 
     # Configure DMS client to indicate NIM is already deployed
     mock_dms_client.is_deployed.return_value = True
@@ -369,9 +405,9 @@ def test_spin_up_nim_already_deployed(mock_db, mock_init_db, mock_dms_client, va
     mock_dms_client.wait_for_deployment.assert_called_once()
     mock_dms_client.wait_for_model_sync.assert_called_once()
 
-    # Verify database operations
-    mock_db.nims.insert_one.assert_called_once()
-    assert mock_db.nims.update_one.call_count >= 2  # Status updates
+    # Verify DB-helper interactions
+    mock_db.create_nim_run.assert_called_once()
+    assert mock_db.set_nim_status.call_count >= 2  # status updates
 
 
 def test_run_base_eval(mock_evaluator, mock_db, mock_init_db, valid_nim_config, mock_settings):
@@ -390,9 +426,9 @@ def test_run_base_eval(mock_evaluator, mock_db, mock_init_db, valid_nim_config, 
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = ObjectId()
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = ObjectId()
 
     # Configure mock evaluator
     mock_evaluator.run_evaluation.return_value = "job-123"
@@ -418,10 +454,10 @@ def test_run_base_eval(mock_evaluator, mock_db, mock_init_db, valid_nim_config, 
     mock_evaluator.wait_for_evaluation.assert_called_once()
     mock_evaluator.get_evaluation_results.assert_called_once_with("job-123")
 
-    # Verify database operations
-    mock_db.nims.find_one.assert_called_once()
-    mock_db.evaluations.insert_one.assert_called_once()
-    assert mock_db.evaluations.update_one.call_count >= 2  # Progress updates and final results
+    # Verify DB-helper interactions
+    mock_db.find_nim_run.assert_called_once()
+    mock_db.insert_evaluation.assert_called_once()
+    assert mock_db.update_evaluation.call_count >= 2  # progress + final
 
 
 def test_run_icl_eval(mock_evaluator, mock_db, mock_init_db, valid_nim_config, mock_settings):
@@ -440,9 +476,9 @@ def test_run_icl_eval(mock_evaluator, mock_db, mock_init_db, valid_nim_config, m
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = ObjectId()
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = ObjectId()
 
     # Configure mock evaluator for tool calling evaluation
     mock_evaluator.run_evaluation.return_value = "job-123"
@@ -478,10 +514,10 @@ def test_run_icl_eval(mock_evaluator, mock_db, mock_init_db, valid_nim_config, m
     mock_evaluator.wait_for_evaluation.assert_called_once()
     mock_evaluator.get_evaluation_results.assert_called_once_with("job-123")
 
-    # Verify database operations
-    mock_db.nims.find_one.assert_called_once()
-    mock_db.evaluations.insert_one.assert_called_once()
-    assert mock_db.evaluations.update_one.call_count >= 2  # Progress updates and final results
+    # Verify DB-helper interactions
+    mock_db.find_nim_run.assert_called_once()
+    mock_db.insert_evaluation.assert_called_once()
+    assert mock_db.update_evaluation.call_count >= 2  # progress + final
 
 
 def test_run_base_eval_failure(
@@ -503,9 +539,9 @@ def test_run_base_eval_failure(
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = eval_id
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail
     mock_evaluator.run_evaluation.side_effect = Exception("Evaluation failed")
@@ -513,14 +549,12 @@ def test_run_base_eval_failure(
     run_base_eval(previous_result)
 
     # Verify error handling
-    mock_db.evaluations.update_one.assert_called_with(
-        {"_id": ANY},
+    mock_db.update_evaluation.assert_called_with(
+        ANY,
         {
-            "$set": {
-                "error": "Error running base-eval evaluation: Evaluation failed",
-                "finished_at": ANY,
-                "progress": 0.0,
-            }
+            "error": "Error running base-eval evaluation: Evaluation failed",
+            "finished_at": ANY,
+            "progress": 0.0,
         },
     )
 
@@ -544,9 +578,9 @@ def test_run_base_eval_results_failure(
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = eval_id
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail during results retrieval
     mock_evaluator.run_evaluation.return_value = "job-123"
@@ -556,14 +590,12 @@ def test_run_base_eval_results_failure(
     run_base_eval(previous_result)
 
     # Verify error handling
-    mock_db.evaluations.update_one.assert_called_with(
-        {"_id": ANY},
+    mock_db.update_evaluation.assert_called_with(
+        ANY,
         {
-            "$set": {
-                "error": "Error running base-eval evaluation: Timeout waiting for evaluation",
-                "finished_at": ANY,
-                "progress": 0.0,
-            }
+            "error": "Error running base-eval evaluation: Timeout waiting for evaluation",
+            "finished_at": ANY,
+            "progress": 0.0,
         },
     )
 
@@ -587,9 +619,9 @@ def test_run_icl_eval_failure(
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = eval_id
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail
     mock_evaluator.run_evaluation.side_effect = Exception("Tool calling evaluation failed")
@@ -597,14 +629,12 @@ def test_run_icl_eval_failure(
     run_icl_eval(previous_result)
 
     # Verify error handling
-    mock_db.evaluations.update_one.assert_called_with(
-        {"_id": ANY},
+    mock_db.update_evaluation.assert_called_with(
+        ANY,
         {
-            "$set": {
-                "error": "Error running icl-eval evaluation: Tool calling evaluation failed",
-                "finished_at": ANY,
-                "progress": 0.0,
-            }
+            "error": "Error running icl-eval evaluation: Tool calling evaluation failed",
+            "finished_at": ANY,
+            "progress": 0.0,
         },
     )
 
@@ -628,9 +658,9 @@ def test_run_icl_eval_results_failure(
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = eval_id
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail during results retrieval
     mock_evaluator.run_evaluation.return_value = "job-123"
@@ -644,14 +674,12 @@ def test_run_icl_eval_results_failure(
         run_icl_eval(previous_result)
 
         # Verify error handling
-        mock_db.evaluations.update_one.assert_called_with(
-            {"_id": ANY},
+        mock_db.update_evaluation.assert_called_with(
+            ANY,
             {
-                "$set": {
-                    "error": "Error running icl-eval evaluation: Timeout waiting for tool calling evaluation",
-                    "finished_at": ANY,
-                    "progress": 0.0,
-                }
+                "error": "Error running icl-eval evaluation: Timeout waiting for tool calling evaluation",
+                "finished_at": ANY,
+                "progress": 0.0,
             },
         )
 
@@ -682,9 +710,9 @@ def test_start_customization(mock_db, mock_init_db, valid_nim_config):
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.customizations.insert_one.return_value.inserted_id = customization_id
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_customization.return_value = customization_id
 
     # Mock the settings
     with patch("src.tasks.tasks.settings") as mock_settings:
@@ -711,25 +739,21 @@ def test_start_customization(mock_db, mock_init_db, valid_nim_config):
             mock_customizer.wait_for_customization.assert_called_once()
             mock_customizer.wait_for_model_sync.assert_called_once_with("customized-test-model")
 
-            # Verify database operations
-            mock_db.nims.find_one.assert_called_once()
-            mock_db.customizations.insert_one.assert_called_once()
+            # Verify DB-helper interactions
+            mock_db.find_nim_run.assert_called_once()
+            mock_db.insert_customization.assert_called_once()
 
             # Verify customization document updates
-            mock_db.customizations.update_one.assert_any_call(
-                {"_id": ANY}, {"$set": {"nmp_uri": "http://test-uri"}}
+            mock_db.update_customization.assert_any_call(ANY, {"nmp_uri": "http://test-uri"})
+            mock_db.update_customization.assert_any_call(
+                ANY, {"customized_model": "customized-test-model"}
             )
-            mock_db.customizations.update_one.assert_any_call(
-                {"_id": ANY}, {"$set": {"customized_model": "customized-test-model"}}
-            )
-            mock_db.customizations.update_one.assert_any_call(
-                {"_id": ANY},
+            mock_db.update_customization.assert_any_call(
+                ANY,
                 {
-                    "$set": {
-                        "finished_at": ANY,
-                        "runtime_seconds": ANY,
-                        "progress": 100.0,
-                    }
+                    "finished_at": ANY,
+                    "runtime_seconds": ANY,
+                    "progress": 100.0,
                 },
             )
 
@@ -752,9 +776,9 @@ def test_start_customization_failure(mock_db, mock_init_db, valid_nim_config):
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.customizations.insert_one.return_value.inserted_id = customization_id
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_customization.return_value = customization_id
 
     # Mock the Customizer to fail
     with patch("src.tasks.tasks.Customizer") as mock_customizer_class:
@@ -764,14 +788,12 @@ def test_start_customization_failure(mock_db, mock_init_db, valid_nim_config):
         start_customization(previous_result)
 
         # Verify error handling
-        mock_db.customizations.update_one.assert_called_with(
-            {"_id": ANY},
+        mock_db.update_customization.assert_called_with(
+            ANY,
             {
-                "$set": {
-                    "error": "Error starting customization: Training job failed",
-                    "finished_at": ANY,
-                    "progress": 0.0,
-                }
+                "error": "Error starting customization: Training job failed",
+                "finished_at": ANY,
+                "progress": 0.0,
             },
         )
 
@@ -806,10 +828,10 @@ def test_run_customization_eval(
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = ObjectId()
-    mock_db.customizations.find_one.return_value = {
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = ObjectId()
+    mock_db.find_customization.return_value = {
         "workload_id": "test-workload",
         "customized_model": "test-model-custom",
     }
@@ -838,10 +860,10 @@ def test_run_customization_eval(
     mock_evaluator.wait_for_evaluation.assert_called_once()
     mock_evaluator.get_evaluation_results.assert_called_once_with("job-123")
 
-    # Verify database operations
-    mock_db.nims.find_one.assert_called_once()
-    mock_db.evaluations.insert_one.assert_called_once()
-    assert mock_db.evaluations.update_one.call_count >= 2  # Progress updates and final results
+    # Verify DB-helper interactions
+    mock_db.find_nim_run.assert_called_once()
+    mock_db.insert_evaluation.assert_called_once()
+    assert mock_db.update_evaluation.call_count >= 2  # progress + final
 
 
 def test_run_customization_eval_failure(
@@ -873,10 +895,10 @@ def test_run_customization_eval_failure(
         llm_judge_config=None,
     )
 
-    # Configure mock database
-    mock_db.nims.find_one.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
-    mock_db.evaluations.insert_one.return_value.inserted_id = eval_id
-    mock_db.customizations.find_one.return_value = {
+    # Configure DB-helper
+    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.insert_evaluation.return_value = eval_id
+    mock_db.find_customization.return_value = {
         "workload_id": "test-workload",
         "customized_model": "test-model-custom",
     }
@@ -887,120 +909,13 @@ def test_run_customization_eval_failure(
     run_customization_eval(previous_result)
 
     # Verify error handling
-    mock_db.evaluations.update_one.assert_called_with(
-        {"_id": ANY},
+    mock_db.update_evaluation.assert_called_with(
+        ANY,
         {
-            "$set": {
-                "error": "Error running customized-eval evaluation: Customization evaluation failed",
-                "finished_at": ANY,
-                "progress": 0.0,
-            }
+            "error": "Error running customized-eval evaluation: Customization evaluation failed",
+            "finished_at": ANY,
+            "progress": 0.0,
         },
-    )
-
-
-def test_spin_up_llm_judge(mock_db, mock_init_db, mock_dms_client, mock_settings):
-    """Test spinning up LLM Judge instance."""
-    previous_result = TaskResult(
-        status="success",
-        workload_id="test-workload",
-        client_id="test-client",
-        flywheel_run_id=str(ObjectId()),
-        workload_type=WorkloadClassification.GENERIC,
-        datasets={},
-        evaluations={},
-        customization=None,
-        llm_judge_config=None,
-    )
-
-    # Configure mock settings
-    mock_settings.llm_judge_config.is_remote.return_value = False
-    mock_settings.llm_judge_config.get_local_nim_config.return_value = NIMConfig(
-        model_name="test-judge-model",
-        context_length=2048,
-        gpus=1,
-        pvc_size="10Gi",
-        tag="latest",
-    )
-
-    # Configure mock database behavior
-    mock_db.llm_judge_runs.insert_one.return_value.inserted_id = ObjectId()
-
-    spin_up_llm_judge(previous_result)
-
-    # Verify DMS client method calls
-    mock_dms_client.is_deployed.assert_called_once()
-    mock_dms_client.deploy_model.assert_called_once()
-    mock_dms_client.wait_for_deployment.assert_called_once()
-    mock_dms_client.wait_for_model_sync.assert_called_once()
-
-    # Verify database operations
-    mock_db.llm_judge_runs.insert_one.assert_called_once()
-
-
-def test_spin_up_llm_judge_remote(mock_db, mock_init_db, mock_dms_client, mock_settings):
-    """Test spinning up LLM Judge instance when using remote judge."""
-    previous_result = TaskResult(
-        status="success",
-        workload_id="test-workload",
-        client_id="test-client",
-        flywheel_run_id=str(ObjectId()),
-        workload_type=WorkloadClassification.GENERIC,
-        datasets={},
-        evaluations={},
-        customization=None,
-        llm_judge_config=None,
-    )
-
-    spin_up_llm_judge(previous_result)
-
-    # Verify no DMS client calls were made
-    mock_dms_client.is_deployed.assert_not_called()
-    mock_dms_client.deploy_model.assert_not_called()
-    mock_dms_client.wait_for_deployment.assert_not_called()
-    mock_dms_client.wait_for_model_sync.assert_not_called()
-
-
-def test_spin_up_llm_judge_failure(mock_db, mock_init_db, mock_dms_client, mock_settings):
-    """Test spinning up LLM Judge instance when deployment fails."""
-    previous_result = TaskResult(
-        status="success",
-        workload_id="test-workload",
-        client_id="test-client",
-        flywheel_run_id=str(ObjectId()),
-        workload_type=WorkloadClassification.GENERIC,
-        datasets={},
-        evaluations={},
-        customization=None,
-        llm_judge_config=None,
-    )
-
-    # Configure mock settings
-    mock_settings.llm_judge_config.is_remote.return_value = False
-    mock_settings.llm_judge_config.get_local_nim_config.return_value = NIMConfig(
-        model_name="test-judge-model",
-        context_length=2048,
-        gpus=1,
-        pvc_size="10Gi",
-        tag="latest",
-    )
-
-    # Configure mock database behavior
-    mock_db.llm_judge_runs.insert_one.return_value.inserted_id = ObjectId()
-
-    # Configure DMS client to fail deployment
-    mock_dms_client.deploy_model.side_effect = Exception("Deployment failed")
-
-    # The function should raise the deployment exception
-    with pytest.raises(Exception) as exc_info:
-        spin_up_llm_judge(previous_result)
-
-    assert "Deployment failed" in str(exc_info.value)
-
-    # Verify error handling in database
-    mock_db.llm_judge_runs.update_one.assert_called_with(
-        {"_id": ANY},
-        {"$set": {"error": ANY, "deployment_status": DeploymentStatus.FAILED}},
     )
 
 
@@ -1078,15 +993,11 @@ def test_shutdown_deployment_failure(mock_db, mock_init_db, mock_dms_client, val
         llm_judge_config=None,
     )
 
-    # Configure mock database with all required fields
-    mock_db.nims.find_one.return_value = {
+    # Configure TaskDBManager behaviour
+    mock_db.create_nim_run.return_value = ObjectId()
+    mock_db.find_nim_run.return_value = {
         "_id": nim_id,
         "model_name": valid_nim_config.model_name,
-        "flywheel_run_id": ObjectId(),  # Add required field
-        "started_at": datetime.utcnow(),  # Add required field
-        "finished_at": datetime.utcnow(),  # Add required field
-        "runtime_seconds": 0,  # Add required field
-        "status": NIMRunStatus.RUNNING,  # Add required field
     }
 
     # Configure shutdown to fail
@@ -1095,142 +1006,7 @@ def test_shutdown_deployment_failure(mock_db, mock_init_db, mock_dms_client, val
     shutdown_deployment(previous_result)
 
     # Verify error handling in database
-    mock_db.nims.update_one.assert_called_with(
-        {"_id": nim_id},
-        {
-            "$set": {
-                "error": "Error shutting down NIM deployment: Shutdown failed",
-                "status": NIMRunStatus.ERROR,
-                "deployment_status": DeploymentStatus.FAILED,
-            }
-        },
-    )
-
-
-def test_shutdown_llm_judge_deployment(mock_db, mock_init_db, mock_dms_client, valid_nim_config):
-    """Test shutting down LLM Judge deployment."""
-    llm_judge_config = NIMConfig(
-        model_name="test-judge-model",
-        context_length=2048,
-        gpus=1,
-        pvc_size="10Gi",
-        tag="latest",
-    )
-    previous_result = TaskResult(
-        status="success",
-        workload_id="test-workload",
-        client_id="test-client",
-        flywheel_run_id=str(ObjectId()),
-        nim=valid_nim_config,
-        workload_type=WorkloadClassification.GENERIC,
-        datasets={},
-        evaluations={},
-        customization=None,
-        llm_judge_config=llm_judge_config,
-    )
-
-    shutdown_llm_judge_deployment(previous_result)
-
-    # Verify DMS client shutdown was called
-    mock_dms_client.shutdown_deployment.assert_called_once()
-
-    # Verify flywheel run was updated
-    mock_db.flywheel_runs.update_one.assert_called_with(
-        {"_id": ObjectId(previous_result.flywheel_run_id)},
-        {"$set": {"finished_at": ANY}},
-    )
-
-
-def test_shutdown_llm_judge_deployment_remote(mock_db, mock_init_db, mock_dms_client):
-    """Test shutting down LLM Judge deployment when using remote judge."""
-    previous_result = TaskResult(
-        status="success",
-        workload_id="test-workload",
-        client_id="test-client",
-        flywheel_run_id=str(ObjectId()),
-        workload_type=WorkloadClassification.GENERIC,
-        datasets={},
-        evaluations={},
-        customization=None,
-        llm_judge_config=None,  # No local judge config
-    )
-
-    shutdown_llm_judge_deployment(previous_result)
-
-    # Verify DMS client shutdown was not called
-    mock_dms_client.shutdown_deployment.assert_not_called()
-
-    # Verify flywheel run was still updated
-    mock_db.flywheel_runs.update_one.assert_called_with(
-        {"_id": ObjectId(previous_result.flywheel_run_id)},
-        {"$set": {"finished_at": ANY}},
-    )
-
-
-def test_shutdown_llm_judge_deployment_failure(
-    mock_db, mock_init_db, mock_dms_client, mock_settings
-):
-    """Test shutting down LLM Judge deployment when it fails."""
-    llm_judge_run_id = ObjectId()
-    flywheel_run_id = str(ObjectId())
-    llm_judge_config = NIMConfig(
-        model_name="test-judge-model",
-        context_length=2048,
-        gpus=1,
-        pvc_size="10Gi",
-        tag="latest",
-    )
-    previous_result = TaskResult(
-        status="success",
-        workload_id="test-workload",
-        client_id="test-client",
-        flywheel_run_id=flywheel_run_id,
-        workload_type=WorkloadClassification.GENERIC,
-        datasets={},
-        evaluations={},
-        customization=None,
-        llm_judge_config=llm_judge_config,
-    )
-
-    # Configure mock settings
-    mock_settings.llm_judge_config.is_remote.return_value = False
-    mock_settings.nmp_config = MagicMock()
-
-    # Configure mock database with all required fields for LLMJudgeRun
-    mock_db.llm_judge_runs.find_one.return_value = {
-        "_id": llm_judge_run_id,
-        "model_name": llm_judge_config.model_name,
-        "flywheel_run_id": ObjectId(flywheel_run_id),
-        "deployment_status": DeploymentStatus.RUNNING,
-        # Add all required fields for LLMJudgeRun
-        "started_at": datetime.utcnow(),
-        "finished_at": None,
-        "error": None,
-    }
-
-    # Configure shutdown to fail
-    mock_dms_client.shutdown_deployment.side_effect = Exception("Shutdown failed")
-
-    shutdown_llm_judge_deployment(previous_result)
-
-    # Verify that find_one was called with correct parameters
-    mock_db.llm_judge_runs.find_one.assert_called_with(
-        {"flywheel_run_id": ObjectId(flywheel_run_id)}
-    )
-
-    # Verify error handling in database
-    mock_db.llm_judge_runs.update_one.assert_called_with(
-        {"_id": llm_judge_run_id},
-        {
-            "$set": {
-                "error": "Error shutting down LLM Judge deployment: Shutdown failed",
-                "deployment_status": DeploymentStatus.FAILED,
-            }
-        },
-    )
-
-    # Verify that flywheel run was updated
-    mock_db.flywheel_runs.update_one.assert_called_with(
-        {"_id": ObjectId(flywheel_run_id)},
-        {"$set": {"finished_at": ANY}},
+    mock_db.mark_nim_error.assert_called_with(
+        nim_id,
+        "Error shutting down NIM deployment: Shutdown failed",
     )

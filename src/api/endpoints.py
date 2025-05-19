@@ -58,7 +58,8 @@ async def create_job(request: JobRequest) -> JobResponse:
     result = db.flywheel_runs.insert_one(flywheel_run.to_mongo())
     flywheel_run.id = str(result.inserted_id)
 
-    # Call the NIM workflow task asynchronously
+    # Call the NIM workflow task asynchronously. This will be executed
+    # in the background.
     run_nim_workflow_dag.delay(
         workload_id=request.workload_id,
         flywheel_run_id=flywheel_run.id,
