@@ -2,7 +2,7 @@
 
 Learn how to set up and deploy the Data Flywheel Blueprint using the steps in this guide.
 
-This quickstart provides an initial [AIVA dataset](../data/aiva-final.jsonl), and [notebook](../notebooks/monitor_job.ipynb) to help you get started working with the services.
+This quickstart provides an initial [AIVA dataset](../data/aiva-final.jsonl) to help you get started working with the services.
 
 ## Prerequisites
 
@@ -81,7 +81,7 @@ To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://do
 2. Clone the repository:
 
    ```bash
-   git clone https://gitlab-master.nvidia.com/aire/microservices/data-flywheel-blueprint
+   git clone https://github.com/NVIDIA-AI-Blueprints/data-flywheel.git
    cd data-flywheel-blueprint
    git checkout main
    ```
@@ -336,4 +336,4 @@ If you encounter any issues:
 
 ## Additional Resources
 
-- [Data Flywheel Blueprint Repository](https://gitlab-master.nvidia.com/aire/microservices/data-flywheel-blueprint)
+- [Data Flywheel Blueprint Repository](https://github.com/NVIDIA-AI-Blueprints/data-flywheel)
