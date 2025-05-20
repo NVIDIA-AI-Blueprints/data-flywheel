@@ -1,7 +1,7 @@
 services:
 
   api:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
+    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -27,7 +27,7 @@ services:
         condition: service_started
 
   celery_worker:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
+    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -58,7 +58,7 @@ services:
 
 
   celery_parent_worker:
-    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-1.0.0.rc4}
+    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
