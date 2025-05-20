@@ -92,7 +92,7 @@ The Data Flywheel Foundational Blueprint relies on several environment variables
 
 | Variable | Description | Required | Default | Notes |
 |----------|-------------|----------|---------|-------|
-| `NVCF_API_KEY` | API key for NVIDIA Cloud Foundation | Yes | None | Used for LLM judge when configured as remote |
+| `NGC_API_KEY` | API key for NVIDIA Cloud Foundation | Yes | None | Used for LLM judge when configured as remote |
 | `HF_TOKEN` | Hugging Face authentication token | Yes | None | Required for data uploading functionality |
 | `ES_COLLECTION_NAME` | Name of the Elasticsearch collection | No | "flywheel" | Used by Elasticsearch client |
 | `ELASTICSEARCH_URL` | URL for Elasticsearch connection | No | "http://localhost:9200" | Used by Elasticsearch client |
@@ -103,7 +103,7 @@ The Data Flywheel Foundational Blueprint relies on several environment variables
 For full functionality, at minimum you should configure:
 
 ```bash
-export NVCF_API_KEY="your-key-here"
+export NGC_API_KEY="your-key-here"
 export HF_TOKEN="your-huggingface-token"
 ```
 

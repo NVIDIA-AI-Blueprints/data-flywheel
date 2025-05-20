@@ -61,6 +61,10 @@ This flywheel includes deduplication and validation steps to reduce the risk of 
 
 Workload IDs are essential for correct data partitioning, evaluation, and reporting. The system expects all records to be tagged with a unique workload ID; missing or inconsistent IDs will result in improper dataset splits and unreliable comparisons. Always ensure that your data ingestion and logging pipelines assign and preserve workload IDs.
 
+### Misinterpreting the `arguments` Field in AIVA Datasets
+
+Datasets produced by AIVA (e.g., `aiva-final.jsonl`) store the `arguments` field as a parsed JSON object rather than the JSON-encoded string returned by the raw OpenAI Chat API. This is intentionally done because the instrumentation layer captured tool-call inputs after they were parsed by the application, and the NeMo customizer expects `arguments` to be an object. If your downstream tools require the original OpenAI representation, stringify this field before use (for example, `record["arguments"] = json.dumps(record["arguments"])`).
+
 ## Recommended Verification Steps Before Promotion
 
 | Step | Purpose |
