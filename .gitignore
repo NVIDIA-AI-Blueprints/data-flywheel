@@ -19,3 +19,7 @@ tmp
 
 # Jupyter Notebook
 .ipynb_checkpoints
+
+nemo-microservices-helm-chart*
+demo-values.yaml
+flywheel_deploy.log

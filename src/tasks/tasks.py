@@ -16,7 +16,7 @@ import os
 import time
 from collections.abc import Callable
 from datetime import datetime
-from typing import Any
+from typing import Any, Optional, List
 
 from bson import ObjectId
 from celery import Celery, chain, group, signals
@@ -42,7 +42,8 @@ from src.lib.flywheel.util import (
     identify_workload_type,
 )
 from src.lib.integration.dataset_creator import DatasetCreator
-from src.lib.integration.record_exporter import RecordExporter
+from src.lib.integration.record_exporter_es import ElasticsearchRecordExporter
+from src.lib.integration.record_exporter_weave import WeaveRecordExporter
 from src.lib.nemo.customizer import Customizer
 from src.lib.nemo.dms_client import DMSClient
 from src.lib.nemo.evaluator import Evaluator
@@ -82,6 +83,8 @@ def create_datasets(
     flywheel_run_id: str,
     client_id: str,
     output_dataset_prefix: str = "",
+    from_weave: bool = True,
+    weave_op_names: Optional[List[str]] = None,
 ) -> TaskResult:
     """Pull data from Elasticsearch and create train/val/eval datasets.
 
@@ -94,11 +97,19 @@ def create_datasets(
         flywheel_run_id: ID of the FlywheelRun document
         client_id: ID of the client
         output_dataset_prefix: Optional prefix for dataset names
+        from_weave: Whether to pull data from Weave or Elasticsearch
+        weave_op_names: Optional list of operation names to filter records
     """
     try:
-        records = RecordExporter().get_records(client_id, workload_id)
+        if from_weave:
+            records = WeaveRecordExporter(op_names=weave_op_names).get_records(client_id, workload_id)
+        else:
+            records = ElasticsearchRecordExporter().get_records(client_id, workload_id)
+        
+        logger.info(f"Example record: {records[0]}")
 
         workload_type = identify_workload_type(records)
+        logger.info(f"Workload type: {workload_type}")
 
         datasets = DatasetCreator(
             records, flywheel_run_id, output_dataset_prefix, workload_id
@@ -703,6 +714,7 @@ def run_nim_workflow_dag(workload_id: str, flywheel_run_id: str, client_id: str)
     - Finally, NIMs are shut down
     """
 
+    logger.info(f"Running NIM workflow DAG for workload {workload_id} with flywheel_run_id {flywheel_run_id} and client_id {client_id}")
     # Create a group of chains for each NIM
     nim_chains = []
     for nim in settings.nims:

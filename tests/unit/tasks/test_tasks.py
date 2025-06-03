@@ -178,7 +178,7 @@ def valid_nim_run(valid_nim_config):
     )
 
 
-def test_create_datasets(mock_es_client, mock_data_uploader, mock_db, mock_init_db, mock_settings):
+def test_create_datasets_from_es(mock_es_client, mock_data_uploader, mock_db, mock_init_db, mock_settings):
     """Test creating datasets from Elasticsearch data."""
     workload_id = "test-workload"
     flywheel_run_id = str(ObjectId())
@@ -258,7 +258,7 @@ def test_create_datasets(mock_es_client, mock_data_uploader, mock_db, mock_init_
         }
     }
 
-    result = create_datasets(workload_id, flywheel_run_id, client_id)
+    result = create_datasets(workload_id, flywheel_run_id, client_id, from_weave=False)
 
     # Instead of checking the type directly, verify the dictionary has the expected structure
     assert "status" in result
@@ -277,7 +277,7 @@ def test_create_datasets(mock_es_client, mock_data_uploader, mock_db, mock_init_
     assert mock_data_uploader.upload_data.call_count >= 1
 
 
-def test_create_datasets_empty_data(
+def test_create_datasets_empty_data_from_es(
     mock_es_client, mock_data_uploader, mock_db, mock_init_db, mock_settings
 ):
     """Test creating datasets with empty Elasticsearch response."""
@@ -294,7 +294,7 @@ def test_create_datasets_empty_data(
 
     # The function should raise an exception for empty dataset
     with pytest.raises(Exception) as exc_info:
-        create_datasets(workload_id, flywheel_run_id, client_id)
+        create_datasets(workload_id, flywheel_run_id, client_id, from_weave=False)
 
     # Verify the error message
     assert "No records found" in str(exc_info.value)

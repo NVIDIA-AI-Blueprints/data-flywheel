@@ -37,7 +37,8 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - MONGODB_DB=flywheel
       - NGC_API_KEY=${NGC_API_KEY}
-    command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "flower", "--port=5555"]
+      - WANDB_API_KEY=${WANDB_API_KEY}
+    command: [ "uv", "run", "celery", "-A", "src.tasks.tasks", "flower", "--port=5555" ]
     restart: always
 
 volumes:

@@ -165,6 +165,21 @@ class LLMJudgeConfig(BaseModel):
         return cls(**data, api_key=api_key)
 
 
+class WandbConfig(BaseModel):
+    """Configuration for Weights & Biases"""
+    api_key: str | None = Field(None, description="Weights & Biases API key")
+    enabled: bool = Field(default=False, description="Whether WANDB logging is enabled")
+
+    @classmethod
+    def from_env(cls) -> "WandbConfig":
+        """Create WandbConfig from environment variables"""
+        api_key = os.getenv('WANDB_API_KEY', '').strip()
+        return cls(
+            api_key=api_key if api_key else None,
+            enabled=bool(api_key)
+        )
+
+
 class Settings(BaseSettings):
     """Application settings loaded from environment variables and config file."""
 
@@ -175,12 +190,14 @@ class Settings(BaseSettings):
     data_split_config: DataSplitConfig
     icl_config: ICLConfig
     logging_config: LoggingConfig = Field(default_factory=LoggingConfig)
+    wandb_config: WandbConfig = Field(default_factory=WandbConfig.from_env)
 
     model_config = SettingsConfigDict(
         env_file=".env",
         env_file_encoding="utf-8",
         env_nested_delimiter="__",
         case_sensitive=True,
+        extra="allow"
     )
 
     def get_api_key(self, env_var: str) -> str | None:
@@ -204,6 +221,7 @@ class Settings(BaseSettings):
                 if "logging_config" in config_data
                 else LoggingConfig()
             )
+            wandb_config = WandbConfig.from_env()
 
             return cls(
                 nmp_config=NMPConfig(**config_data["nmp_config"]),
@@ -213,6 +231,7 @@ class Settings(BaseSettings):
                 data_split_config=DataSplitConfig(**config_data["data_split_config"]),
                 icl_config=ICLConfig(**config_data["icl_config"]),
                 logging_config=logging_config,
+                wandb_config=wandb_config,
             )
 
 

@@ -84,7 +84,7 @@ def create_flywheel_run(test_workload_id: str, client_id: str):
 
 
 @pytest.mark.integration
-def test_create_datasets(
+def test_create_datasets_from_es(
     test_workload_id: str,
     client_id: str,
     create_flywheel_run,
@@ -108,6 +108,7 @@ def test_create_datasets(
         workload_id=current_workload_id,
         flywheel_run_id=flywheel_run_id,
         client_id=client_id,
+        from_weave=False,
     )
 
     # Convert result to TaskResult model
@@ -154,7 +155,7 @@ def test_create_datasets(
 
 
 @pytest.mark.integration
-def test_create_datasets_workload_classification(
+def test_create_datasets_workload_classification_es(
     test_workload_id: str,
     client_id: str,
     create_flywheel_run,
@@ -170,6 +171,7 @@ def test_create_datasets_workload_classification(
         workload_id=current_workload_id,
         flywheel_run_id=flywheel_run_id,
         client_id=client_id,
+        from_weave=False,
     )
     task_result = TaskResult.model_validate(result)
 
@@ -182,7 +184,7 @@ def test_create_datasets_workload_classification(
 
 
 @pytest.mark.integration
-def test_create_datasets_different_split_configs(
+def test_create_datasets_different_split_configs_es(
     test_workload_id: str,
     client_id: str,
     create_flywheel_run,
@@ -206,6 +208,7 @@ def test_create_datasets_different_split_configs(
             workload_id=current_workload_id,
             flywheel_run_id=flywheel_run_id,
             client_id=client_id,
+            from_weave=False,
         )
         TaskResult.model_validate(result)
 
@@ -217,7 +220,7 @@ def test_create_datasets_different_split_configs(
 
 
 @pytest.mark.integration
-def test_create_datasets_upload_validation(
+def test_create_datasets_upload_validation_es(
     test_workload_id: str,
     client_id: str,
     create_flywheel_run,
@@ -234,6 +237,7 @@ def test_create_datasets_upload_validation(
         workload_id=current_workload_id,
         flywheel_run_id=flywheel_run_id,
         client_id=client_id,
+        from_weave=False,
     )
 
     # Verify the upload_data calls contain properly formatted data
@@ -254,7 +258,7 @@ def test_create_datasets_upload_validation(
 
 
 @pytest.mark.integration
-def test_create_datasets_with_prefix(
+def test_create_datasets_with_prefix_es(
     test_workload_id: str, flywheel_run_id: str, client_id: str, mock_external_services
 ) -> None:
     """Test the create_datasets task with a custom dataset prefix."""
@@ -268,6 +272,7 @@ def test_create_datasets_with_prefix(
         flywheel_run_id=flywheel_run_id,
         client_id=client_id,
         output_dataset_prefix=prefix,
+        from_weave=False,
     )
 
     # Convert result to TaskResult model
@@ -280,7 +285,7 @@ def test_create_datasets_with_prefix(
 
 
 @pytest.mark.integration
-def test_create_datasets_no_records_error(
+def test_create_datasets_no_records_error_es(
     client_id: str,
     create_flywheel_run,
     mock_external_services,
@@ -298,6 +303,7 @@ def test_create_datasets_no_records_error(
             workload_id=non_existent_workload_id,
             flywheel_run_id=flywheel_run_id,
             client_id=client_id,
+            from_weave=False,
         )
 
     # Verify the error message
@@ -312,7 +318,7 @@ def test_create_datasets_no_records_error(
 
 
 @pytest.mark.integration
-def test_create_datasets_not_enough_records_error(
+def test_create_datasets_not_enough_records_error_es(
     test_workload_id: str,
     client_id: str,
     create_flywheel_run,
@@ -356,6 +362,7 @@ def test_create_datasets_not_enough_records_error(
                     workload_id=test_workload_id,
                     flywheel_run_id=flywheel_run_id,
                     client_id=client_id,
+                    from_weave=False,
                 )
 
             assert "Not enough records found" in str(exc_info.value)
@@ -421,7 +428,7 @@ def test_create_datasets_not_enough_records_error(
         ),
     ],
 )
-def test_create_datasets_specific_malformed_records(
+def test_create_datasets_specific_malformed_records_es(
     test_workload_id: str,
     client_id: str,
     create_flywheel_run,
@@ -494,6 +501,7 @@ def test_create_datasets_specific_malformed_records(
                     workload_id=test_workload_id,
                     flywheel_run_id=flywheel_run_id,
                     client_id=client_id,
+                    from_weave=False,
                 )
 
                 # Verify the expected error was logged

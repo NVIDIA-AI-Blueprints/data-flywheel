@@ -12,7 +12,7 @@ from src.log_utils import setup_logging
 logger = setup_logging("data_flywheel.record_exporter")
 
 
-class RecordExporter:
+class ElasticsearchRecordExporter:
     es_client: Elasticsearch
 
     def __init__(self):

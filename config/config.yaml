@@ -12,18 +12,10 @@ logging_config:
   level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 llm_judge_config:
-  # type: "remote"
-  # url: "http://0.0.0.0:9022/v1/chat/completions"
-  # model_id: "meta/llama-3.3-70b-instruct"
-  # api_key_env: "NGC_API_KEY"
-
-  # To spin up a dedicated NIM in your cluster, comment the above uncomment and fill these:
-  type: "local"
-  model_name: "meta/llama-3.3-70b-instruct"
-  context_length: 32768
-  gpus: 4
-  pvc_size: 25Gi
-  tag: "1.8.5"
+  type: "remote"
+  url: "https://integrate.api.nvidia.com/v1/chat/completions"
+  model_id: "meta/llama-3.3-70b-instruct"
+  api_key_env: "NGC_API_KEY"
 
 nims:
   - model_name: "meta/llama-3.2-1b-instruct"

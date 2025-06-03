@@ -17,6 +17,7 @@ from typing import Any
 
 import requests
 
+import os
 from src.config import TrainingConfig, settings
 from src.log_utils import setup_logging
 
@@ -55,6 +56,11 @@ class Customizer:
             Tuple containing the job ID and the customized model name
         """
 
+        if settings.wandb_config.enabled:
+            headers = {"wandb-api-key": settings.wandb_config.api_key}
+        else:
+            headers = {}
+
         training_params = {
             "name": name,
             "output_model": f"{namespace}/{output_model_name}",
@@ -73,7 +79,7 @@ class Customizer:
             },
         }
 
-        response = requests.post(f"{self.nemo_url}/v1/customization/jobs", json=training_params)
+        response = requests.post(f"{self.nemo_url}/v1/customization/jobs", json=training_params, headers=headers)
 
         if response.status_code != 200:
             msg = f"Failed to start training job. Status: {response.status_code}, Response: {response.text}"
