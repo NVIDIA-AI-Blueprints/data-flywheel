@@ -14,9 +14,10 @@ services:
       - MONGODB_URL=mongodb://mongodb:27017
       - MONGODB_DB=flywheel
       - NGC_API_KEY=${NGC_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
     volumes:
-      - ./src:/app/src  # Mount the src directory for hot reloading
-    command: ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+      - ./src:/app/src # Mount the src directory for hot reloading
+    command: [ "uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload" ]
     restart: always
     depends_on:
       elasticsearch:
@@ -38,11 +39,12 @@ services:
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
       - NGC_API_KEY=${NGC_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
     network_mode: host
     volumes:
-      - ./src:/app/src  # Mount the src directory for hot reloading
+      - ./src:/app/src # Mount the src directory for hot reloading
     # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery", "-n", "main_worker@%h"]
+    command: [ "uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery", "-n", "main_worker@%h" ]
 
     # Uncomment if you want to run celery without reloading on file changes
     # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
@@ -55,7 +57,6 @@ services:
         condition: service_started
       mongodb:
         condition: service_started
-
 
   celery_parent_worker:
     image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
@@ -69,11 +70,12 @@ services:
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
       - NGC_API_KEY=${NGC_API_KEY}
+      - WANDB_API_KEY=${WANDB_API_KEY}
     network_mode: host
     volumes:
-      - ./src:/app/src  # Mount the src directory for hot reloading
+      - ./src:/app/src # Mount the src directory for hot reloading
     # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue", "-n", "parent_worker@%h"]
+    command: [ "uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue", "-n", "parent_worker@%h" ]
 
     # Uncomment if you want to run celery without reloading on file changes
     # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
@@ -86,7 +88,6 @@ services:
         condition: service_started
       mongodb:
         condition: service_started
-
 
   # Datastores
   # - Redis is the Celery broker and result backend
@@ -110,9 +111,7 @@ services:
     environment:
       - MONGO_LOG_LEVEL=error
     command: >
-      mongod --quiet
-      --setParameter diagnosticDataCollectionEnabled=false
-      --setParameter logComponentVerbosity='{ "network": { "verbosity": 0 }, "command": { "verbosity": 0 }, "control": { "verbosity": 0 } }'
+      mongod --quiet --setParameter diagnosticDataCollectionEnabled=false --setParameter logComponentVerbosity='{ "network": { "verbosity": 0 }, "command": { "verbosity": 0 }, "control": { "verbosity": 0 } }'
     restart: always
     healthcheck:
       test: echo 'db.runCommand("ping").ok' | mongosh localhost:27017/test --quiet

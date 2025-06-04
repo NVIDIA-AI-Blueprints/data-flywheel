@@ -57,7 +57,7 @@ def mongo_db():
 @pytest.fixture(autouse=True)
 def load_test_data_fixture(test_workload_id: str, client_id: str) -> Generator:
     """Fixture to provide the load_test_data function."""
-    from src.scripts.load_test_data import load_data_to_elasticsearch
+    from src.scripts.load_test_data_es import load_data_to_elasticsearch
 
     # Use the canonical integration-test dataset instead of the old placeholder.
     # The file lives under data/aiva-final.jsonl relative to the project root.
