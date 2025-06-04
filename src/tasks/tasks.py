@@ -44,10 +44,12 @@ from src.lib.flywheel.util import (
 from src.lib.integration.dataset_creator import DatasetCreator
 from src.lib.integration.record_exporter_es import ElasticsearchRecordExporter
 from src.lib.integration.record_exporter_weave import WeaveRecordExporter
+from src.lib.integration.wandb_callback import make_wandb_progress_callback
 from src.lib.nemo.customizer import Customizer
 from src.lib.nemo.dms_client import DMSClient
 from src.lib.nemo.evaluator import Evaluator
 from src.log_utils import setup_logging
+import wandb
 
 logger = setup_logging("data_flywheel.tasks")
 
@@ -102,15 +104,19 @@ def create_datasets(
     """
     try:
         if from_weave:
-            records = WeaveRecordExporter(op_names=weave_op_names).get_records(client_id, workload_id)
+            exporter = WeaveRecordExporter(op_names=weave_op_names)
+            records = exporter.get_records(client_id, workload_id)
         else:
-            records = ElasticsearchRecordExporter().get_records(client_id, workload_id)
+            exporter = ElasticsearchRecordExporter()
+            records = exporter.get_records(client_id, workload_id)
         
-        logger.info(f"Example record: {records[0]}")
 
         workload_type = identify_workload_type(records)
-        logger.info(f"Workload type: {workload_type}")
 
+        if from_weave:
+            exporter.save_to_weave_dataset(records, client_id, workload_id)
+
+        #TODO: Find the most useful place to save the dataset within W&B as these just provide details of the dataset uploaded to NeMo DataStore
         datasets = DatasetCreator(
             records, flywheel_run_id, output_dataset_prefix, workload_id
         ).create_datasets()
@@ -261,7 +267,7 @@ def run_base_eval(previous_result: TaskResult) -> TaskResult:
 def run_icl_eval(previous_result: TaskResult) -> TaskResult:
     return run_generic_eval(previous_result, EvalType.ICL, DatasetType.ICL)
 
-
+#TODO: Incorporate Weave somehow
 def run_generic_eval(
     previous_result: TaskResult, eval_type: EvalType, dataset_type: DatasetType
 ) -> TaskResult:
@@ -307,16 +313,26 @@ def run_generic_eval(
         # Add evaluation to the database
         db_manager.insert_evaluation(evaluation)
 
-        # Fix: Create closure with bound variables
-        def make_progress_callback(manager: TaskDBManager, eval_instance):
-            def callback(update_data):
-                """Update evaluation document with progress"""
-                manager.update_evaluation(eval_instance.id, update_data)
+        if settings.wandb_config.enabled:
+            logger.info(f"W&B logging enabled for {eval_type} evaluation")
+            run = wandb.init(
+                project=settings.wandb_config.project,
+                name=f"{eval_type}-{previous_result.workload_id}-{previous_result.nim.model_name}",
+            ) if not wandb.run else wandb.run
+            progress_callback = make_wandb_progress_callback(db_manager, run, evaluation, previous_result)
 
-            return callback
+        else:
+            logger.info(f"W&B logging disabled for {eval_type} evaluation")
+            # Fix: Create closure with bound variables
+            def make_progress_callback(manager: TaskDBManager, eval_instance):
+                def callback(update_data):
+                    """Update evaluation document with progress"""
+                    manager.update_evaluation(eval_instance.id, update_data)
 
-        # Create callback with properly bound variables
-        progress_callback = make_progress_callback(db_manager, evaluation)
+                return callback
+
+            # Create callback with properly bound variables
+            progress_callback = make_progress_callback(db_manager, evaluation)
 
         # Run the evaluation
         try:
@@ -377,7 +393,7 @@ def run_generic_eval(
 
             # Get final results
             results = evaluator.get_evaluation_results(job["job_id"])
-            logger.info(results)
+            logger.info(f"Final evaluation results: {results}")
 
             # Update final results
             finished_time = datetime.utcnow()
@@ -402,6 +418,7 @@ def run_generic_eval(
                     "scores"
                 ]["similarity"]["value"]
 
+            # Log final results to W&B and update evaluation
             job["progress_callback"](
                 {
                     "scores": scores,
@@ -410,6 +427,23 @@ def run_generic_eval(
                     "progress": 100.0,
                 }
             )
+            if settings.wandb_config.enabled:
+                # Log complete results to W&B
+                run = wandb.init(
+                        project=settings.wandb_config.project,
+                        name=f"{eval_type}-{previous_result.workload_id}-{previous_result.nim.model_name}",
+                    ) if not wandb.run else wandb.run
+                    
+                run.log({
+                    "complete_results": results,
+                    "final_scores": scores,
+                    "total_runtime": (finished_time - start_time).total_seconds(),
+                    "eval_type": eval_type,
+                    "model_name": previous_result.nim.model_name,
+                    "workload_type": previous_result.workload_type,
+                })
+                logger.info(f"Logged complete evaluation results to W&B for {eval_type} evaluation")
+            
             previous_result.add_evaluation(
                 eval_type,
                 EvaluationResult(
@@ -518,6 +552,15 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
         customizer.wait_for_customization(customization_job_id, progress_callback=progress_callback)
 
         customizer.wait_for_model_sync(customized_model)
+
+        #TODO: Save model to W&B Model Registry after associating to the run id for the train and the eval runs
+        if settings.wandb_config.enabled:
+            logger.info(f"W&B logging enabled for customization")
+            run = wandb.init(
+                project=settings.wandb_config.project,
+                name=f"customization-{workload_id}-{target_llm_model}",
+            ) if not wandb.run else wandb.run
+            run.log({"customized_model": customized_model})
 
         # Update completion status
         finished_time = datetime.utcnow()
@@ -723,8 +766,8 @@ def run_nim_workflow_dag(workload_id: str, flywheel_run_id: str, client_id: str)
         nim_chain = chain(
             spin_up_nim.s(nim_config=nim.model_dump()),  # Convert NIMConfig to dict
             group(
-                run_base_eval.s(),
-                run_icl_eval.s(),
+                # run_base_eval.s(),
+                # run_icl_eval.s(),
                 chain(
                     start_customization.s(),
                     run_customization_eval.s(),

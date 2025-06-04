@@ -30,6 +30,7 @@ from weave.trace.context.weave_client_context import (
      get_weave_client,
  )
 from src.scripts.utils import validate_path  # noqa: E402
+from src.config import settings
 
 @weave.op
 def call_chat(messages: list[dict], model: str = "not-a-model", temperature: float = 0.7, max_tokens: int = 1000, workload_id: str = "", client_id: str = "") -> dict:
@@ -74,11 +75,10 @@ def load_data_to_weave(
     workload_id: str = "",
     client_id: str = "",
     file_path: str = "aiva-final.jsonl",
-    project_name: str = "data-flywheel"
 ):
     client = get_weave_client()
     if not client:
-        client = weave.init(project_name=project_name)
+        client = weave.init(project_name=settings.wandb_config.project)
 
     """Load test data from JSON file into Weave."""
     # Validate and get the safe path

@@ -3,13 +3,12 @@ nmp_config:
   nim_base_url: "http://nim.test"
   datastore_base_url: "http://data-store.test"
 
-
   # All resources created in NMP will be namespaced to this value
   nmp_namespace: "dfwbp"
 
 # Logging configuration
 logging_config:
-  level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+  level: "INFO" # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
 
 llm_judge_config:
   type: "remote"
@@ -25,13 +24,11 @@ nims:
     tag: "1.8.3"
     customization_enabled: true
 
-
   # - model_name: "meta/llama-3.2-3b-instruct"
   #   context_length: 32768
   #   gpus: 1
   #   pvc_size: 25Gi
   #   tag: "1.8.3"
-
 
   # - model_name: "meta/llama-3.1-8b-instruct"
   #   context_length: 32768
@@ -39,13 +36,11 @@ nims:
   #   pvc_size: 25Gi
   #   tag: "1.8.3"
 
-
   # - model_name: "meta/llama-3.3-70b-instruct"
   #   context_length: 32768
   #   gpus: 4
   #   pvc_size: 25Gi
   #   tag: "1.8.3"
-
 
 # Data split config:
 # train, val, eval split sizes and ratios

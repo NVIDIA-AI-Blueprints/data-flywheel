@@ -8,6 +8,7 @@ from src.log_utils import setup_logging
 from weave.trace.context.weave_client_context import (
      get_weave_client,
  )
+from weave import Dataset
 
 logger = setup_logging("data_flywheel.record_exporter_weave")
 
@@ -15,7 +16,6 @@ logger = setup_logging("data_flywheel.record_exporter_weave")
 class WeaveRecordExporter:
     def __init__(
         self, 
-        project_name: str = "data-flywheel",
         op_names: Optional[List[str]] = None
     ):
         """Initialize the Weave record exporter.
@@ -27,7 +27,7 @@ class WeaveRecordExporter:
         """
         self.client = get_weave_client()
         if not self.client:
-            self.client = weave.init(project_name)
+            self.client = weave.init(settings.wandb_config.project)
         self.op_names = op_names or ["*"]  # Default to all operations if none specified
 
     def get_records(self, client_id: str, workload_id: str) -> list[dict]:
@@ -122,3 +122,24 @@ class WeaveRecordExporter:
         validate_records(records, workload_id, settings.data_split_config)
 
         return records
+    
+    def save_to_weave_dataset(self, records: list[dict], client_id: str, workload_id: str):
+        """Save records to Weave evals.
+        
+        Args:
+            records: List of records to save
+            workload_id: The workload identifier
+            run_id: The run identifier
+        """
+        logger.info(f"Saving {len(records)} records to Weave for client {client_id} and workload {workload_id}")
+        
+        # Create a dataset
+        dataset = Dataset(
+            name=f"flywheel-eval-{client_id}-{workload_id}",
+            rows=records
+        )
+
+        # Publish the dataset
+        weave.publish(dataset)
+
+        return

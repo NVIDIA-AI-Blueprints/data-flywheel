@@ -57,9 +57,16 @@ class Customizer:
         """
 
         if settings.wandb_config.enabled:
-            headers = {"wandb-api-key": settings.wandb_config.api_key}
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json",
+                "wandb-api-key": settings.wandb_config.api_key
+            }
         else:
-            headers = {}
+            headers = {
+                "Content-Type": "application/json",
+                "Accept": "application/json"
+            }
 
         training_params = {
             "name": name,

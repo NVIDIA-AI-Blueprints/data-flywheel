@@ -169,6 +169,7 @@ class WandbConfig(BaseModel):
     """Configuration for Weights & Biases"""
     api_key: str | None = Field(None, description="Weights & Biases API key")
     enabled: bool = Field(default=False, description="Whether WANDB logging is enabled")
+    project: str = Field(default="data-flywheel", description="Weights & Biases project name")
 
     @classmethod
     def from_env(cls) -> "WandbConfig":
@@ -176,7 +177,8 @@ class WandbConfig(BaseModel):
         api_key = os.getenv('WANDB_API_KEY', '').strip()
         return cls(
             api_key=api_key if api_key else None,
-            enabled=bool(api_key)
+            enabled=bool(api_key),
+            project=os.getenv('WANDB_PROJECT', 'data-flywheel')
         )
 
 
