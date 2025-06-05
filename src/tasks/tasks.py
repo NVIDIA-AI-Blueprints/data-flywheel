@@ -48,6 +48,7 @@ from src.lib.integration.wandb_callback import make_wandb_progress_callback
 from src.lib.nemo.customizer import Customizer
 from src.lib.nemo.dms_client import DMSClient
 from src.lib.nemo.evaluator import Evaluator
+from src.lib.nemo.model_manager import ModelManager
 from src.log_utils import setup_logging
 import wandb
 
@@ -279,6 +280,9 @@ def run_generic_eval(
         return previous_result
 
     logger.info(f"Running {eval_type} evaluation")
+    logger.info(f"Previous result contents: {previous_result.model_dump_json(indent=2)}")
+    logger.info(f"Previous result customization: {previous_result.customization.model_dump_json(indent=2) if previous_result.customization else 'None'}")
+    
     evaluator = Evaluator(llm_judge_config=previous_result.llm_judge_config)
     start_time = datetime.utcnow()
 
@@ -312,13 +316,57 @@ def run_generic_eval(
 
         # Add evaluation to the database
         db_manager.insert_evaluation(evaluation)
+        logger.info(f"Created evaluation document with ID: {evaluation.id}")
 
         if settings.wandb_config.enabled:
             logger.info(f"W&B logging enabled for {eval_type} evaluation")
+            
+            # Use the same shared config and tags structure
+            shared_config = {
+                "model_name": previous_result.nim.model_name,
+                "workload_id": previous_result.workload_id,
+                "flywheel_run_id": previous_result.flywheel_run_id,
+                "base_model": previous_result.nim.model_name,
+            }
+            
+            shared_tags = [
+                f"model_{previous_result.nim.model_name}",
+                f"workload_{previous_result.workload_id}",
+                f"flywheel_{previous_result.flywheel_run_id}",
+            ]
+            
+            if previous_result.customization:
+                # Add customization details consistently
+                shared_config["customization_job_id"] = previous_result.customization.job_id
+                shared_config["customization_type"] = "fine-tuning"  # Match start_customization
+                shared_tags.append(previous_result.customization.job_id)
+                shared_tags.append("customization")  # Match start_customization
+                logger.info(f"Added customization details to W&B config: {shared_config}")
+            
+            # Evaluation-specific config and tags
+            eval_config = {
+                **shared_config,
+                "eval_type": eval_type,
+                "workload_type": previous_result.workload_type,
+                "dataset_type": dataset_type,
+                "customization_enabled": previous_result.nim.customization_enabled,
+            }
+            
+            eval_tags = [
+                *shared_tags,
+                f"eval_{eval_type}",
+                f"workload_type_{previous_result.workload_type}",
+            ]
+            
+            logger.info(f"Initializing W&B run with config: {eval_config}")
+            logger.info(f"W&B run tags: {eval_tags}")
+            
             run = wandb.init(
                 project=settings.wandb_config.project,
                 name=f"{eval_type}-{previous_result.workload_id}-{previous_result.nim.model_name}",
-            ) if not wandb.run else wandb.run
+                config=eval_config,
+                tags=eval_tags,
+            )
             progress_callback = make_wandb_progress_callback(db_manager, run, evaluation, previous_result)
 
         else:
@@ -342,6 +390,7 @@ def run_generic_eval(
                 if eval_type == EvalType.CUSTOMIZED
                 else previous_result.nim.target_model_for_evaluation()
             )
+            logger.info(f"Using target model for evaluation: {target_model}")
 
             job_id = evaluator.run_evaluation(
                 namespace=settings.nmp_config.nmp_namespace,
@@ -430,18 +479,29 @@ def run_generic_eval(
             if settings.wandb_config.enabled:
                 # Log complete results to W&B
                 run = wandb.init(
-                        project=settings.wandb_config.project,
-                        name=f"{eval_type}-{previous_result.workload_id}-{previous_result.nim.model_name}",
-                    ) if not wandb.run else wandb.run
-                    
-                run.log({
-                    "complete_results": results,
-                    "final_scores": scores,
-                    "total_runtime": (finished_time - start_time).total_seconds(),
-                    "eval_type": eval_type,
-                    "model_name": previous_result.nim.model_name,
-                    "workload_type": previous_result.workload_type,
-                })
+                    project=settings.wandb_config.project,
+                    name=f"{eval_type}-{previous_result.workload_id}-{previous_result.nim.model_name}",
+                ) if not wandb.run else wandb.run
+                
+                # Structure metrics based on workload type
+                metrics = {
+                    "total_runtime": (finished_time - start_time).total_seconds()
+                }
+                
+                # Add workload-specific metrics
+                if previous_result.workload_type == WorkloadClassification.TOOL_CALLING:
+                    metrics.update({
+                        "function_name_accuracy": scores.get("function_name", 0.0),
+                        "function_name_and_args_accuracy": scores.get("function_name_and_args_accuracy", 0.0),
+                        "tool_calling_correctness": scores.get("tool_calling_correctness", 0.0)
+                    })
+                else:  # Generic workload
+                    metrics.update({
+                        "similarity": scores.get("similarity", 0.0)
+                    })
+                
+                # Log the structured metrics
+                run.log(metrics)
                 logger.info(f"Logged complete evaluation results to W&B for {eval_type} evaluation")
             
             previous_result.add_evaluation(
@@ -467,6 +527,9 @@ def run_generic_eval(
             )
             # no need to raise error here, the error is captured, let the task continue to spin down the deployment
             previous_result.error = error_msg
+        
+        if settings.wandb_config.enabled:
+            run.finish()
 
     return previous_result
 
@@ -553,15 +616,101 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
 
         customizer.wait_for_model_sync(customized_model)
 
-        #TODO: Save model to W&B Model Registry after associating to the run id for the train and the eval runs
+        # In the start_customization task:
         if settings.wandb_config.enabled:
             logger.info(f"W&B logging enabled for customization")
-            run = wandb.init(
-                project=settings.wandb_config.project,
-                name=f"customization-{workload_id}-{target_llm_model}",
-            ) if not wandb.run else wandb.run
-            run.log({"customized_model": customized_model})
+            
+            # First initialize W&B to get access to the API
+            api = wandb.Api()
+            
+            # Define shared config and tags
+            shared_config = {
+                "model_name": target_llm_model,
+                "workload_id": workload_id,
+                "flywheel_run_id": previous_result.flywheel_run_id,
+                "base_model": target_llm_model,
+                "customization_type": "fine-tuning",
+                "customization_job_id": customization_job_id,
+            }
+            
+            shared_tags = [
+                f"model_{target_llm_model}",
+                f"workload_{workload_id}",
+                f"flywheel_{previous_result.flywheel_run_id}",
+                customization_job_id,
+                "customization",
+            ]
+            
+            # Customization-specific config and tags
+            customization_config = {
+                **shared_config,
+                "customization_enabled": True,  # Add this to match eval config
+            }
+            
+            customization_tags = shared_tags  # Use the same tags structure
+            
+            try:
+                #BUG: Display name filtering is not working
+                # Search for runs in the project with the customization job ID in the name
+                loaded_runs = api.runs(
+                    f"{settings.wandb_config.entity}/{settings.wandb_config.project}",
+                    # filters={"display_name": f"*{customization_job_id}*"}
+                )
 
+                # Get the most recent run that matches
+                # run = next(runs, None)
+                loaded_run = None
+                for run in loaded_runs:
+                    if run.display_name == customization_job_id:
+                        loaded_run = run
+                        break
+                
+                if run:
+                    logger.info(f"Found existing W&B run for customization job {customization_job_id}")
+                    # Resume the existing run
+                    run = wandb.init(
+                        project=loaded_run.project,
+                        entity=loaded_run.entity,
+                        id=loaded_run.id,  # Use the actual W&B run ID
+                        resume="allow"
+                    )
+                    run.config.update(customization_config)
+                    run.tags.extend(customization_tags)
+                    run.update()
+                else:
+                    logger.warning(f"No existing W&B run found for customization job {customization_job_id}")
+                    # Create a new run if we can't find the existing one
+                    run = wandb.init(
+                        project=settings.wandb_config.project,
+                        name=f"customization-{customization_job_id}",
+                        config=customization_config,
+                        tags=customization_tags,
+                    )
+            except Exception as e:
+                logger.error(f"Error finding W&B run for customization job {customization_job_id}: {str(e)}")
+                # Fall back to creating a new run
+                run = wandb.init(
+                    project=settings.wandb_config.project,
+                    name=f"customization-{customization_job_id}",
+                    config=customization_config,
+                    tags=customization_tags,
+                )
+        
+            # Register the customized model to W&B
+            model_manager = ModelManager(settings.nmp_config)
+            model_manager.register_model_to_wandb(
+                model_name=customized_model,
+                namespace=settings.nmp_config.nmp_namespace,
+                run=run,
+                metadata={
+                    "workload_id": workload_id,
+                    "flywheel_run_id": previous_result.flywheel_run_id,
+                    "base_model": target_llm_model,
+                    "customization_type": "fine-tuning"
+                }
+            )
+            
+            run.finish()
         # Update completion status
         finished_time = datetime.utcnow()
         final_update = {
@@ -602,6 +751,9 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
         return previous_result
 
     try:
+        logger.info(f"Starting customization evaluation with previous_result: {previous_result.model_dump_json(indent=2)}")
+        logger.info(f"Customization details: {previous_result.customization.model_dump_json(indent=2) if previous_result.customization else 'None'}")
+
         if not previous_result.nim.customization_enabled:
             logger.info(f"Customization disabled for {previous_result.nim.model_name}")
             return previous_result
@@ -613,6 +765,7 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
 
         customization_model = previous_result.customization.model_name
         workload_id = previous_result.workload_id
+        logger.info(f"Using customization model: {customization_model} for workload: {workload_id}")
 
         # Find the customization document
         customization_doc = db_manager.find_customization(
@@ -623,17 +776,57 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
             msg = f"No customization found for model {customization_model}"
             logger.error(msg)
             raise ValueError(msg)
+        
+        logger.info(f"Found customization document: {customization_doc}")
 
         print(
             f"Running evaluation on customized model {customization_model} for workload {workload_id}"
         )
 
         next_result = run_generic_eval(previous_result, EvalType.CUSTOMIZED, DatasetType.BASE)
+        logger.info(f"Completed generic eval with result: {next_result.model_dump_json(indent=2)}")
+
+        # --- Link eval runs to model artifact ---
+        if settings.wandb_config.enabled and previous_result.customization and previous_result.customization.model_name:
+            try:
+                logger.info("Attempting to link eval runs to model artifact in W&B")
+                # Find eval runs for this customization (by job_id or tags)
+                api = wandb.Api()
+                loaded_eval_runs = [
+                    run for run in api.runs(
+                        f"{settings.wandb_config.entity}/{settings.wandb_config.project}"
+                    )
+                    if run.config.get("customization_job_id") == previous_result.customization.job_id
+                    and run.config.get("eval_type") == "CUSTOMIZED"
+                ]
+                logger.info(f"Found {len(loaded_eval_runs)} eval runs to link")
+                
+                model_manager = ModelManager(settings.nmp_config)
+                for loaded_eval_run in loaded_eval_runs:
+                    logger.info(f"Linking eval run {loaded_eval_run.id} to model {previous_result.customization.model_name}")
+                    run = wandb.init(
+                        project=loaded_eval_run.project,
+                        entity=loaded_eval_run.entity,
+                        id=loaded_eval_run.id,  # Use the actual W&B run ID
+                        resume="allow"
+                    )
+                    model_manager.link_evals_to_model(
+                        model_name=previous_result.customization.model_name,
+                        namespace=settings.nmp_config.nmp_namespace,
+                        eval_run=run
+                    )
+                    run.finish()
+            except Exception as e:
+                logger.error(f"Error linking eval runs to model artifact: {e}")
+                logger.error(f"Error details: {str(e)}")
+                logger.error(f"Customization job_id: {previous_result.customization.job_id if previous_result.customization else 'None'}")
 
         return next_result
     except Exception as e:
         error_msg = f"Error running customization evaluation: {e!s}"
         logger.error(error_msg)
+        logger.error(f"Error details: {str(e)}")
+        logger.error(f"Previous result state: {previous_result.model_dump_json(indent=2) if previous_result else 'None'}")
         previous_result.error = error_msg
         return previous_result
 

@@ -24,3 +24,6 @@ nemo-microservices-helm-chart*
 demo-values.yaml
 flywheel_deploy.log
 .env
+wandb
+downloaded_model
+testing_nb.ipynb

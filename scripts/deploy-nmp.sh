@@ -454,7 +454,7 @@ customizer:
         storageClass: "standard"
         volumeAccessMode: "ReadWriteOnce"
     wandb:
-      project: data-flywheel
+      project: data-flywheel-baked
     env:
       WANDB_API_KEY: $WANDB_API_KEY
 
