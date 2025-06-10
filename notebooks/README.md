@@ -32,7 +32,7 @@ All direct communication with the NeMo Microservices platform (model deployment,
 
 Check out the following example notebooks to learn how to optimize LLMs using a data flywheel.
 
-- [Discover More Cost-Efficient AI Customer Service Agents](./aiva-data-flywheel-tutorial.ipynb): Use logs and tool-calling data to fine-tune and evaluate a more cost efficient model.
+- [Discover More Cost-Efficient AI Customer Service Agents](./data-flywheel-bp-tutorial.ipynb): Use logs and tool-calling data to fine-tune and evaluate a more cost efficient model.
 
 ## Prerequisites
 
