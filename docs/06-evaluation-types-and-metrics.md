@@ -135,7 +135,7 @@ Metrics appear in the `scores` field of evaluation results.
 
 | Metric Name | Type/Range | Computed By| Description |
 |-------------------------------|--------------------|----------------------|----------------------------------------------------------------------------------------------|
-| similarity | Integer (1–10) | LLM judge | LLM-judged similarity between candidate and reference answers. Higher is better. |
+| similarity | Integer (1–10) | LLM judge | For non tool-calling datasets; LLM-judged similarity between candidate and reference answers. Higher is better. |
 | function_name / function_name_accuracy | Float (0–1) | Programmatic | Accuracy of function name prediction in tool-calling tasks. |
 | function_name_and_args_accuracy| Float (0–1) | Programmatic | Accuracy of both function name and arguments in tool-calling tasks. |
 | tool_calling_correctness | Integer (0 or 1) | LLM judge | LLM-judged correctness of tool call output (1=correct, 0=incorrect). |

@@ -5,7 +5,7 @@ Learn how to configure the Data Flywheel Foundational Blueprint using this guide
 - [Configuration Guide](#configuration-guide)
   - [Before You Start](#before-you-start)
   - [Configuration File Location](#configuration-file-location)
-  - [NMP Configuration](#nmp-configuration)
+  - [NeMo microservices Configuration](#NeMo microservices-configuration)
   - [Logging Configuration](#logging-configuration)
   - [Environment Variables](#environment-variables)
   - [Model Integration](#model-integration)
@@ -32,11 +32,11 @@ Learn how to configure the Data Flywheel Foundational Blueprint using this guide
 
 > **Important**
 >
-> Advanced configuration such as Large-scale hyper-parameter sweeps, architecture search, or custom evaluation metrics must run directly in **NeMo Microservices Platform (NMP)**. The configurations in this guide are only for the blueprint itself.
+> Advanced configuration such as Large-scale hyper-parameter sweeps, architecture search, or custom evaluation metrics must run directly in **NeMo microservices**. The configurations in this guide are only for the blueprint itself.
 
 > **Note**
 > 
-> For detailed NMP API documentation, refer to the [official documentation](https://docs.nvidia.com/nemo/microservices/latest/api/index.html).
+> For detailed NeMo microservices API documentation, refer to the [official documentation](https://docs.nvidia.com/nemo/microservices/latest/api/index.html).
 
 ## Configuration File Location
 
@@ -46,7 +46,7 @@ The Data Flywheel Foundational Blueprint uses a YAML-based configuration system.
 config/config.yaml
 ```
 
-## NMP Configuration
+## NeMo microservices Configuration
 
 The `nmp_config` section controls the NeMo Microservices Platform (NMP) integration:
 
@@ -130,6 +130,9 @@ nims:
 | `tag` | Model version tag | Yes | "1.8.3" |
 | `customization_enabled` | Whether model can be fine-tuned | No | true |
 
+> **Note:**
+> All NIMs listed in your configuration will appear in the job response with a status of `"Pending"` as soon as a job starts, even if NIMs are executed one after another. This ensures users have a transparent view of all planned model evaluations for the job. Each NIM's status will update (e.g., to `Running`, `Completed`, or `Error`) as the job progresses.
+
 ### Supported Models
 
 Currently supported models include:
@@ -148,24 +151,9 @@ The `llm_judge_config`, `data_split_config`, and `icl_config` sections control e
 
 The `llm_judge_config` section configures the LLM used for evaluating model outputs:
 
-**NOTE: By default llm_judge_config is set to remote configuration.**
+**NOTE: By default llm_judge_config is set to local configuration.**
 
-```yaml
-llm_judge_config:
-  type: "remote"
-  url: "https://integrate.api.nvidia.com/v1/chat/completions"
-  model_id: "meta/llama-3.3-70b-instruct"
-  api_key_env: "NGC_API_KEY"
-```
-
-| Option | Description | Required | Example |
-|--------|-------------|----------|---------|
-| `type` | Deployment type (remote or local) | Yes | "remote" |
-| `url` | API endpoint for remote LLM | Yes (if remote) | "https://integrate.api.nvidia.com/v1/chat/completions" |
-| `model_id` | Model identifier | Yes | "meta/llama-3.3-70b-instruct" |
-| `api_key_env` | Environment variable name containing API key | Yes (if remote) | "NGC_API_KEY" |
-
-For local deployment, use the following configuration instead:
+For local deployment, use the following configuration:
 
 ```yaml
 llm_judge_config:
@@ -186,6 +174,23 @@ llm_judge_config:
 | `pvc_size` | Persistent volume claim size | Yes | "25Gi" |
 | `tag` | Model version tag | Yes | "1.8.3" |
 
+For remote deployment, use the following configuration instead:
+
+```yaml
+llm_judge_config:
+  type: "remote"
+  url: "https://integrate.api.nvidia.com/v1/chat/completions"
+  model_name: "meta/llama-3.3-70b-instruct"
+  api_key_env: "NGC_API_KEY"
+```
+
+| Option | Description | Required | Example |
+|--------|-------------|----------|---------|
+| `type` | Deployment type (remote or local) | Yes | "remote" |
+| `url` | API endpoint for remote LLM | Yes (if remote) | "https://integrate.api.nvidia.com/v1/chat/completions" |
+| `model_name` | Model identifier | Yes | "meta/llama-3.3-70b-instruct" |
+| `api_key_env` | Environment variable name containing API key | Yes (if remote) | "NGC_API_KEY" |
+
 ### Data Split Configuration
 
 ```yaml
@@ -195,15 +200,30 @@ data_split_config:
   min_total_records: 50
   random_seed: null
   limit: null
+  parse_function_arguments: true
 ```
 
 | Option | Description | Default | Notes |
 |--------|-------------|---------|-------|
 | `eval_size` | Number of examples for evaluation | 20 | Minimum size of evaluation set |
-| `val_ratio` | Ratio of data used for validation | 0.1 | 10% of remaining data after eval |
+| `val_ratio` | Ratio of data used for validation | 0.1 | Must be ≥ 0 and < 1 (10% of remaining data after eval) |
 | `min_total_records` | Minimum required records | 50 | Total dataset size requirement |
 | `random_seed` | Seed for reproducible splits | null | Set for reproducible results |
 | `limit` | Limit for evaluator | null | Set for evaluator config limit |
+| `parse_function_arguments` | Parse function arguments to JSON | true | Data validation: converts string function arguments to JSON objects for tool calling workloads |
+
+> **Note**
+> 
+> While these values are set in the configuration file, you can override them on a per-job basis by including a `data_split_config` object in the POST request to `/api/jobs`. This gives you the flexibility to use different split configurations for different jobs without modifying the configuration file.
+>
+> For example, you might want to:
+> - Use a larger evaluation set for certain workloads
+> - Adjust the validation ratio based on dataset size
+> - Set a specific random seed for reproducible results
+>
+> You can override just the parameters you want to change - any parameters not specified in the POST request will automatically use their default values shown in the table above. For instance, you could override just the `eval_size` while keeping the default values for all other parameters.
+>
+> See the [Run a Job section](02-quickstart.md#run-a-job) in the Quickstart Guide for a complete example.
 
 ### ICL (In-Context Learning) Configuration
 
@@ -309,4 +329,4 @@ Standard deployment with core services:
 | Network Mode | `deploy/docker-compose.yaml` | Service networking |
 | Volume Mounts | `deploy/docker-compose.yaml` | Persistent storage |
 | Health Checks | `deploy/docker-compose.yaml` | Service monitoring |
-| Environment | `.env` file or environment variables | API keys and URLs | 
+| Environment | `.env` file or environment variables | API keys and URLs |

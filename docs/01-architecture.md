@@ -9,6 +9,38 @@
 
 Think of this flywheel as a discovery and promotion service that surfaces promising smaller models rather than a fully autonomous replacement engine.
 
+## Automatic Resource Cleanup
+
+The Data Flywheel Blueprint includes an **automatic cleanup system** that ensures proper resource management when the system is shut down unexpectedly or when workers are terminated. This prevents resource leaks and ensures clean system state.
+
+### How Automatic Cleanup Works
+
+The `CleanupManager` automatically activates during worker shutdown and performs the following operations:
+
+1. **Detects running resources**: Finds all flywheel runs with `PENDING` or `RUNNING` status
+2. **Identifies active NIMs**: Locates all NVIDIA Inference Microservices with `RUNNING` deployment status
+3. **Cancels running jobs**: 
+   - Cancels active customization jobs through NeMo Customizer
+   - Marks evaluation jobs for cleanup
+4. **Shuts down deployments**: 
+   - Stops all running NIM deployments via NeMo Deployment Manager
+   - Shuts down local LLM judge deployments (remote judges are unaffected)
+5. **Updates database state**: Marks all resources as `CANCELLED` with appropriate timestamps and error messages
+
+### When Automatic Cleanup Triggers
+
+The cleanup manager activates automatically in these scenarios:
+
+- **Worker shutdown**: When Celery workers receive shutdown signals (SIGTERM, SIGINT)
+- **Container termination**: When Docker containers are stopped or killed
+- **System restart**: During planned or unplanned system restarts
+
+### Safety Features
+
+- **Database-driven**: Only cleans up resources marked as running in the database
+- **Error resilience**: Continues cleanup even if individual operations fail
+- **Comprehensive logging**: Records all cleanup actions and errors for debugging
+
 ### Data Flywheel Blueprint Architecture Diagram
 
 The following diagram illustrates the high-level architecture of the Data Flywheel Blueprint:
@@ -98,7 +130,7 @@ flowchart TD
     end
 
     subgraph k8s["K8s cluster"]
-        nmp["NMP"]
+        nmp["NeMo microservices"]
     end
 
     workers --> nmp

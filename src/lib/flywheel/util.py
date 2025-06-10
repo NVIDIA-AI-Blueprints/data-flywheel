@@ -97,75 +97,203 @@ def format_example(record: Record) -> tuple[str, int]:
     return example_str, token_count
 
 
+def uniform_bins(max_records: int, num_tools: int) -> list[int]:
+    """Calculate uniform distribution of records across tools."""
+    base = max_records // num_tools
+    remainder = max_records % num_tools
+    return [base + 1 if i < remainder else base for i in range(num_tools)]
+
+
+def get_tool_name(record: Record) -> str:
+    """Get the tool name from the record."""
+    tool_calls = record["response"]["choices"][0]["message"].get("tool_calls")
+    if tool_calls and len(tool_calls) > 0:
+        return tool_calls[0]["function"]["name"]
+    return "no_tool"
+
+
+def select_icl_examples(
+    source_records: list[Record], config: ICLConfig, workload_type: WorkloadClassification
+) -> dict[str, list[tuple[Record, str, int]]]:
+    """
+    Select and organize ICL examples by tool groups with uniform binning for tool_calling records,
+    or simple max_records selection for normal records.
+    Returns binned tool groups for later round-robin fitting per record.
+    """
+    if not source_records:
+        return {}
+
+    # Step 1: Group records by tools and format examples
+    tool_groups: dict[str, list[tuple[Record, str, int]]] = {}
+
+    for record in source_records:
+        example_str, token_count = format_example(record)
+        if not example_str:
+            continue
+
+        tool_name = get_tool_name(record)
+
+        if tool_name not in tool_groups:
+            tool_groups[tool_name] = []
+        tool_groups[tool_name].append((record, example_str, token_count))
+
+    # Step 2: Sort each tool group by token count (shortest first)
+    for examples in tool_groups.values():
+        examples.sort(key=lambda x: x[2])
+
+    # Step 3: Apply different selection logic based on workflow type
+    if workload_type == WorkloadClassification.TOOL_CALLING:
+        # Tool calling workflow: Apply uniform binning to limit examples per tool
+        if tool_groups:
+            num_tools = len(tool_groups)
+            bins = uniform_bins(config.max_examples, num_tools)
+
+            # Limit each tool group to its allocated bin size
+            tool_names = list(tool_groups.keys())
+            for i, tool_name in enumerate(tool_names):
+                allocated_size = bins[i]
+                tool_groups[tool_name] = tool_groups[tool_name][:allocated_size]
+    else:
+        # Normal workflow: Simple max_records selection after sorting
+        if tool_groups:
+            # Combine all examples from all groups and sort by token count
+            all_examples = []
+            for examples in tool_groups.values():
+                all_examples.extend(examples)
+            all_examples.sort(key=lambda x: x[2])
+            selected_examples = all_examples[: config.max_examples]
+            tool_groups = {"generic_examples": selected_examples}
+
+    return tool_groups
+
+
+def fit_examples_for_record(
+    tool_groups: dict[str, list[tuple[Record, str, int]]],
+    available_tokens: int,
+) -> list[tuple[Record, str, int]]:
+    """
+    Fit examples for a single record using round-robin selection with token checking.
+    Selected examples:
+        1. Grouped by tool name,
+        2. Each group is already sorted by token count
+
+    For Generic workload: `no_tool` is the only group.
+    For Tool Calling workload:
+            follow round-robin approach to pick smallest examples from each tool group.
+            we try to fit as many examples as possible for each record, but we don't want to exceed the max context length.
+    For Generic workload:
+            we try to fit as many examples as possible for each record, but we don't want to exceed the max examples.
+    """
+    if not tool_groups or available_tokens <= 0:
+        return []
+
+    tool_names = list(tool_groups.keys())
+
+    # Round-robin selection with token checking
+    selected_examples: list[tuple[Record, str, int]] = []
+    tool_indices = {tool: 0 for tool in tool_names}
+    total_tokens = 0
+
+    # Calculate maximum possible iterations based on available examples
+    max_examples_per_tool = (
+        max(len(examples) for examples in tool_groups.values()) if tool_groups else 0
+    )
+
+    for _ in range(max_examples_per_tool):
+        for tool_name in tool_names:
+            # Check if this tool has more examples available
+            if tool_indices[tool_name] < len(tool_groups[tool_name]):
+                example = tool_groups[tool_name][tool_indices[tool_name]]
+
+                # Check if adding this example exceeds token limit
+                if total_tokens + example[2] <= available_tokens:
+                    selected_examples.append(example)
+                    total_tokens += example[2]
+                    tool_indices[tool_name] += 1
+                else:
+                    # Stop if tokens run out
+                    return selected_examples
+
+    return selected_examples
+
+
 def generate_icl_records(
-    records: list[Record], config: ICLConfig = settings.icl_config
+    records: list[Record],
+    config: ICLConfig = settings.icl_config,
+    selected_examples: dict[str, list[tuple[Record, str, int]]] | None = None,
 ) -> list[Record]:
-    """
-    Generate ICL records from the base records with token awareness.
-
-    Logic:
-    - Pick shortest max_examples: By sorting all records by token count (ascending) and selecting the first max_examples (shortest ones)
-    - Inject ICL examples into each target record: Fit as many examples as possible into the record, starting with all and reducing if needed (while checking if it exceeds context limits)
-    - Skip ICL injection for records that would exceed context limits
-    """
-
+    """Generate ICL records with per-record round-robin fitting and token checking."""
     if not records:
         return []
 
-    # Step 1: Pick examples with non-empty content
-    potential_examples: list[tuple[Record, str, int]] = []
+    # If selected_examples is None, select examples from the same records
+    if selected_examples is None:
+        workload_type = identify_workload_type(records)
+        selected_examples = select_icl_examples(records, config, workload_type)
 
-    for record in records:
-        # Skip if we already have enough examples
-        if len(potential_examples) >= config.max_examples:
-            break
-
-        # Get example and check if content is non-empty
-        example_str, token_count = format_example(record)
-
-        if example_str:
-            potential_examples.append((record, example_str, token_count))
-
-    # Step 2: Inject ICL examples into each target record
+    # Inject ICL examples into each target record with per-record fitting
     result = deepcopy(records)
+    remaining_cnts = []
+
     for record in result:
-        # Calculate the token size of the current record
+        # Calculate available tokens for this specific record
         record_tokens = estimate_tokens(json.dumps(record))
         available_tokens = config.max_context_length - config.reserved_tokens - record_tokens
 
         if available_tokens <= 0:
-            # skip ICL injection
-            continue
+            continue  # Skip if there are NOT enough tokens
 
-        # Try to fit examples, starting with all and reducing if needed
-        for num_examples in range(len(potential_examples), config.min_examples - 1, -1):
-            examples_subset: list[tuple[Record, str, int]] = potential_examples[:num_examples]
-            example_strings: list[str] = [ex[1] for ex in examples_subset]
-            examples_tokens = sum(ex[2] for ex in examples_subset)
+        # Fit examples for this record using round-robin with token checking
+        fitted_examples = fit_examples_for_record(selected_examples, available_tokens)
+        example_tokens = sum(ex[2] for ex in fitted_examples)
+        remaining_cnts.append(
+            (
+                example_tokens,
+                len(fitted_examples),
+                available_tokens - example_tokens,
+            )
+        )
+        if not fitted_examples:
+            continue  # No examples fit
 
-            # This subset fits, use it
-            if examples_tokens <= available_tokens:
-                concatenated_string = "\n\n".join(example_strings)
+        # Create system message with fitted examples
+        example_strings = [ex[1] for ex in fitted_examples]
+        concatenated_string = "\n\n".join(example_strings)
 
-                first_message = record["request"]["messages"][0]
-                if first_message["role"] == "system":
-                    # Prepend DEFAULT_SYSTEM_MESSAGE if not already present
-                    first_message["content"] = (
-                        f"{DEFAULT_SYSTEM_MESSAGE.strip()}\n\n"
-                        f"{concatenated_string}\n\n"
-                        f"{first_message['content']}"
-                    )
+        if example_tokens <= available_tokens:
+            first_message = record["request"]["messages"][0]
+            if first_message["role"] == "system":
+                first_message["content"] = (
+                    f"{DEFAULT_SYSTEM_MESSAGE.strip()}\n\n"
+                    f"{concatenated_string}\n\n"
+                    f"{first_message['content']}"
+                )
+            else:
+                system_message: Message = {
+                    "role": "system",
+                    "content": f"{DEFAULT_SYSTEM_MESSAGE.strip()}\n\n{concatenated_string}",
+                }
+                record["request"]["messages"].insert(0, system_message)
+    logger.info("ICL Injection Done")
+    logger.info("-------------------------------------------------")
+    logger.info(f"Total ICL Eval Dataset Size: {len(result)}.")
+    logger.info(f"Total Max Context Length: {config.max_context_length}.")
+    logger.info(f"Total Reserved Tokens: {config.reserved_tokens}.")
+    logger.info(f"Tried to fit max_examples={config.max_examples} examples per record")
+    if len(remaining_cnts) > 0:
+        logger.info(
+            f"On Average Injected {sum(cnt[1] for cnt in remaining_cnts) / len(remaining_cnts)} examples per record"
+        )
+        logger.info(
+            f"On Average Used {sum(cnt[0] for cnt in remaining_cnts) / len(remaining_cnts)} tokens per record"
+        )
+        logger.info(
+            f"On Average Remaining {sum(cnt[2] for cnt in remaining_cnts) / len(remaining_cnts)} tokens per record"
+        )
+    else:
+        logger.info("No examples were injected")
 
-                else:
-                    # If there is no system message, add one with the default message
-                    system_message: Message = {
-                        "role": "system",
-                        "content": f"{DEFAULT_SYSTEM_MESSAGE.strip()}\n\n{concatenated_string}",
-                    }
-                    record["request"]["messages"].insert(0, system_message)
-
-                break
-
+    logger.info("-------------------------------------------------")
     return result
 
 
@@ -173,25 +301,58 @@ def identify_workload_type(records: list[Record]) -> WorkloadClassification:
     """
     Identify the type of workload from the response.
     """
-    tool_records = [record for record in records if record.get("request", {}).get("tools", None)]
-    if len(tool_records) > 0:
-        return WorkloadClassification.TOOL_CALLING
+    # Check for tool calls in response messages
+    for record in records:
+        try:
+            tool_calls = record["response"]["choices"][0]["message"].get("tool_calls")
+            if tool_calls and len(tool_calls) > 0:
+                return WorkloadClassification.TOOL_CALLING
+        except (KeyError, IndexError):
+            continue
+
     return WorkloadClassification.GENERIC
 
 
-def validate_records(
-    records: list[Record], workload_id: str, split_config: DataSplitConfig
-) -> None:
-    if len(records) < split_config.min_total_records:
-        msg = (
-            f"Not enough records found for the given workload_id: {workload_id}. "
-            + f"A minimum of {split_config.min_total_records} records is required, "
-            + f"but only {len(records)} were found."
-        )
-        logger.error(msg)
-        raise ValueError(msg)
+def format_evaluator(records: list[Record]) -> list[Record]:
+    """
+    Format records specifically for evaluation by converting tool call function arguments
+    to JSON strings in the request section only.
 
-    return
+    This ensures OpenAI API compatibility during evaluation while preserving the original
+    data structure for other purposes.
+
+    Args:
+        records: List of records to format
+
+    Returns:
+        List of formatted records with tool call arguments as JSON strings
+    """
+    formatted_records = []
+
+    for record in records:
+        # Create a deep copy to avoid modifying the original record
+        formatted_record = deepcopy(record)
+
+        # Only process request messages for tool call argument formatting
+        if "request" in formatted_record and "messages" in formatted_record["request"]:
+            for message in formatted_record["request"]["messages"]:
+                if message.get("tool_calls"):
+                    for tool_call in message["tool_calls"]:
+                        if "function" in tool_call and "arguments" in tool_call["function"]:
+                            arguments = tool_call["function"]["arguments"]
+                            # Convert arguments to JSON string if they're currently an object
+                            if isinstance(arguments, dict):
+                                try:
+                                    tool_call["function"]["arguments"] = json.dumps(arguments)
+                                except (TypeError, ValueError) as e:
+                                    logger.warning(
+                                        f"Failed to serialize tool call arguments: {arguments}, error: {e}"
+                                    )
+                                    # Keep original value if serialization fails
+
+        formatted_records.append(formatted_record)
+
+    return formatted_records
 
 
 def split_records(
@@ -218,7 +379,9 @@ def split_records(
     return eval_records, train_records, val_records
 
 
-def format_training_data(records: list[Record]) -> list[dict[str, Any]]:
+def format_training_data(
+    records: list[Record], workload_type: WorkloadClassification
+) -> list[dict[str, Any]]:
     """Format training data for the model.
     Args:
         records: List of conversation records containing request and response data
@@ -239,14 +402,23 @@ def format_training_data(records: list[Record]) -> list[dict[str, Any]]:
             # Validate response structure
             if not record["response"]["choices"]:
                 raise IndexError(f"No choices found in response: {record}")
+            # Current customizer expects non-empty content for assistant messages
+            # workaround to convert None to ""
+            # TODO: remove this once customizer is updated
+            # for tool-calling workloads, convert response content to ""
+            rec = {}
+
+            for message in messages:
+                if message["role"] == "assistant" and message["content"] is None:
+                    message["content"] = ""
 
             response_message = record["response"]["choices"][0]["message"]
-            messages.append(response_message)
-
-            rec = {"messages": messages}
-
-            if "tools" in record["request"]:
+            if workload_type == WorkloadClassification.TOOL_CALLING:
+                response_message["content"] = ""
                 rec["tools"] = record["request"]["tools"]
+
+            messages.append(response_message)
+            rec["messages"] = messages
 
             training_data.append(rec)
 

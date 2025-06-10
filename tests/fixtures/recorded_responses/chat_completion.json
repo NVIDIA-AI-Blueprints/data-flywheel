@@ -30,6 +30,24 @@
     "request": {
       "messages": [
         {"role": "user", "content": "What's the weather in New York?"}
+      ],
+      "tools": [
+        {
+          "type": "function",
+          "function": {
+            "name": "get_weather",
+            "description": "Get the weather in a given location",
+            "parameters": {
+              "type": "object",
+              "properties": {
+                "location": {
+                  "type": "string",
+                  "description": "The location to get the weather for"
+                }
+              }
+            }
+          }
+        }
       ]
     },
     "response": {

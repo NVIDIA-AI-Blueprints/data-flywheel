@@ -75,7 +75,7 @@ def create_openai_request_response(data: dict[str, Any]) -> dict[str, Any]:
 def load_data_to_elasticsearch(
     workload_id: str = "",
     client_id: str = "",
-    file_path: str = "aiva-final.jsonl",
+    file_path: str = "aiva_primary_assistant_dataset.jsonl",
     index_name: str = ES_COLLECTION_NAME,
 ):
     """Load test data from JSON file into Elasticsearch."""

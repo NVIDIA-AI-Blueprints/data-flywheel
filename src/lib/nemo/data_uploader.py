@@ -26,12 +26,11 @@ logger = setup_logging("data_flywheel.nemo.data_uploader")
 
 
 class DataUploader:
-    def __init__(self, namespace: str, dataset_name: str):
+    def __init__(self, dataset_name: str):
         """
         Initialize the DataUploader with necessary configuration.
 
         Args:
-            namespace: Namespace for the dataset
             dataset_name: Name of the dataset
         """
         self.entity_host = settings.nmp_config.nemo_base_url
@@ -43,7 +42,7 @@ class DataUploader:
         self.hf_token = os.environ.get("HF_TOKEN", "nothing")
         assert self.hf_token, "HF_TOKEN is not set"
 
-        self.namespace = namespace
+        self.namespace = settings.nmp_config.nmp_namespace
         self.dataset_name = dataset_name
 
         # Initialize HF API client
@@ -308,3 +307,39 @@ class DataUploader:
 
         # Register the dataset
         self.register_dataset(description=description, project=project)
+
+    def delete_dataset(self) -> None:
+        """
+        Delete the dataset from the Data Store (HuggingFace repository).
+
+        Raises:
+            AssertionError: If the deletion fails
+            ValueError: If the repository ID is not set (no files uploaded)
+        """
+        # Delete the repository from the Data Store
+        delete_url = f"{self.ds_host}/v1/hf/api/repos/delete"
+        payload = {"name": self.dataset_name, "organization": self.namespace, "type": "dataset"}
+        resp = requests.delete(delete_url, json=payload)
+        assert resp.status_code in (
+            200,
+            204,
+        ), f"Failed to delete dataset from Data Store: {resp.status_code} - {resp.text}"
+        logger.info(f"Successfully deleted dataset {self.dataset_name} from Data Store")
+
+    def unregister_dataset(self) -> None:
+        """
+        Unregister the dataset from the Entity Store.
+
+        Raises:
+            AssertionError: If the unregistration fails
+        """
+        # Delete the dataset registration from the Entity Store
+        unregister_url = f"{self.entity_host}/v1/datasets/{self.namespace}/{self.dataset_name}"
+        resp = requests.delete(unregister_url)
+        assert resp.status_code in (
+            200,
+            204,
+        ), f"Failed to unregister dataset from Entity Store: {resp.status_code} - {resp.text}"
+        logger.info(
+            f"Successfully unregistered dataset {self.namespace}/{self.dataset_name} from Entity Store"
+        )

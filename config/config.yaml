@@ -4,7 +4,7 @@ nmp_config:
   datastore_base_url: "http://data-store.test"
 
 
-  # All resources created in NMP will be namespaced to this value
+  # All resources created in NeMo Microservices Platform (NMP) will be namespaced to this value
   nmp_namespace: "dfwbp"
 
 # Logging configuration
@@ -14,7 +14,7 @@ logging_config:
 llm_judge_config:
   # type: "remote"
   # url: "http://0.0.0.0:9022/v1/chat/completions"
-  # model_id: "meta/llama-3.3-70b-instruct"
+  # model_name: "meta/llama-3.3-70b-instruct"
   # api_key_env: "NGC_API_KEY"
 
   # To spin up a dedicated NIM in your cluster, comment the above uncomment and fill these:
@@ -63,6 +63,7 @@ data_split_config:
   min_total_records: 50
   random_seed: null
   limit: 1000 # null means no limit
+  parse_function_arguments: true # parse function arguments to JSON objects for tool calling records
 
 # ICL config:
 # max context length, reserved tokens, max examples, min examples

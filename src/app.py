@@ -16,6 +16,7 @@ from fastapi import FastAPI
 
 from src.api.db import init_db
 from src.api.endpoints import router as api_router
+from src.lib.nemo.llm_as_judge import validate_llm_judge
 from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.app")
@@ -27,7 +28,11 @@ app.include_router(api_router, prefix="/api")
 
 
 @app.on_event("startup")
-def startup_db_client():
+def startup_event():
+    # Validate LLM Judge
+    validate_llm_judge()
+
+    # Initialize database
     init_db()
 
 

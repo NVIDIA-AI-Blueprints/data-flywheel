@@ -31,11 +31,13 @@ def test_client() -> TestClient:
     """Create a test client for the FastAPI app"""
     from src.api.db import init_db
     from src.app import app
-    from src.tasks.tasks import celery_app
+    from src.tasks.tasks import celery_app, init_worker
 
     celery_app.conf.update(task_always_eager=True, task_eager_propagates=True)
 
+    # Initialize database and worker process
     init_db()
+    init_worker()
 
     return TestClient(app)
 
@@ -49,6 +51,7 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
         patch("src.lib.nemo.evaluator.requests") as mock_requests,
         patch("src.lib.nemo.dms_client.requests") as mock_dms_requests,
         patch("src.lib.nemo.customizer.requests") as mock_customizer_requests,
+        patch("time.sleep") as mock_sleep,
     ):
         output_model = f"custom-model-{uuid.uuid4()}"
 
@@ -196,12 +199,16 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
         mock_upload_data.side_effect = lambda data, file_path: file_path
         mock_get_file_uri.side_effect = lambda: "test_uri"
 
+        # Mock sleep to do nothing
+        mock_sleep.return_value = None
+
         yield {
             "requests": mock_requests,
             "upload_data": mock_upload_data,
             "get_file_uri": mock_get_file_uri,
             "dms_requests": mock_dms_requests,
             "customizer_requests": mock_customizer_requests,
+            "sleep": mock_sleep,
         }
 
 
@@ -231,6 +238,7 @@ def test_full_job_evaluation_flow(
     test_workload_id: str,
     cleanup_test_data,
     load_test_data_fixture,
+    validation_test_settings,
 ):
     """Test the complete job evaluation flow from POST /jobs to completion"""
     # 1. Create a new job - since tasks run synchronously, it will complete immediately

@@ -13,7 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 from datetime import datetime
-from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -27,7 +26,7 @@ from src.lib.nemo.evaluator import Evaluator
 @pytest.fixture
 def evaluator() -> Evaluator:
     with patch.dict("os.environ", {"NEMO_URL": "http://test-nemo-url"}):
-        return Evaluator(llm_judge_config=settings.llm_judge_config)
+        return Evaluator(judge_model_config=settings.llm_judge_config.judge_model_config())
 
 
 @pytest.fixture
@@ -43,182 +42,167 @@ def mock_evaluation() -> NIMEvaluation:
     )
 
 
-def test_wait_for_evaluation_created_state(
-    evaluator: Evaluator, mock_evaluation: NIMEvaluation
-) -> None:
-    """Test handling of 'created' state in wait_for_evaluation"""
+@pytest.fixture
+def sample_flywheel_run_id():
+    """Fixture to provide a valid ObjectId string for tests."""
+    return str(ObjectId())
+
+
+def test_wait_for_evaluation_created_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+    """Test handling of created state in wait_for_evaluation"""
     job_id = "test-job-id"
-    progress_updates: list[dict[str, Any]] = []
 
-    def progress_callback(update_data: dict[str, Any]) -> None:
-        progress_updates.append(update_data)
-
-    # Mock the job status response for 'created' state
+    # Mock the job status response for created state
     mock_response = MagicMock()
+    mock_response.status_code = 200
     mock_response.json.return_value = {
         "status": "created",
-        "status_details": {"message": None, "task_status": {}, "progress": None},
+        "status_details": {"progress": 0},
     }
 
-    with patch("requests.get", return_value=mock_response):
-        with pytest.raises(TimeoutError) as exc_info:
-            evaluator.wait_for_evaluation(
+    # Mock get_db_manager to prevent actual DB calls
+    with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        mock_db_manager = mock_get_db_manager.return_value
+        mock_db_manager.is_flywheel_run_cancelled.return_value = False
+        with patch("requests.get", return_value=mock_response):
+            with pytest.raises(TimeoutError):
+                evaluator.wait_for_evaluation(
+                    job_id=job_id,
+                    flywheel_run_id=sample_flywheel_run_id,
+                    polling_interval=1,
+                    timeout=1,
+                )
+
+
+def test_wait_for_evaluation_running_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+    """Test handling of running state in wait_for_evaluation"""
+    job_id = "test-job-id"
+
+    # Mock the job status response for running state
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "status": "running",
+        "status_details": {"progress": 50},
+    }
+
+    # Mock get_db_manager to prevent actual DB calls
+    with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        mock_db_manager = mock_get_db_manager.return_value
+        mock_db_manager.is_flywheel_run_cancelled.return_value = False
+        with patch("requests.get", return_value=mock_response):
+            with pytest.raises(TimeoutError):
+                evaluator.wait_for_evaluation(
+                    job_id=job_id,
+                    flywheel_run_id=sample_flywheel_run_id,
+                    polling_interval=1,
+                    timeout=1,
+                )
+
+
+def test_wait_for_evaluation_completed_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+    """Test handling of completed state in wait_for_evaluation"""
+    job_id = "test-job-id"
+
+    # Mock the job status response for completed state
+    mock_response = MagicMock()
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "status": "completed",
+        "status_details": {"progress": 100},
+    }
+
+    # Mock get_db_manager to prevent actual DB calls
+    with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        mock_db_manager = mock_get_db_manager.return_value
+        mock_db_manager.is_flywheel_run_cancelled.return_value = False
+        with patch("requests.get", return_value=mock_response):
+            result = evaluator.wait_for_evaluation(
                 job_id=job_id,
-                evaluation=mock_evaluation,
+                flywheel_run_id=sample_flywheel_run_id,
                 polling_interval=1,
                 timeout=1,
-                progress_callback=progress_callback,
             )
-        assert "stalled for more than 1 seconds" in str(exc_info.value)
-
-        # Verify progress callback was called with 0 progress
-        assert len(progress_updates) > 0
-        assert progress_updates[0]["progress"] == 0.0
+            assert result["status"] == "completed"
 
 
-def test_wait_for_evaluation_running_state(
-    evaluator: Evaluator, mock_evaluation: NIMEvaluation
-) -> None:
-    """Test handling of 'running' state in wait_for_evaluation"""
-    job_id = "test-job-id"
-    progress_updates: list[dict[str, Any]] = []
-
-    def progress_callback(update_data: dict[str, Any]) -> None:
-        progress_updates.append(update_data)
-
-    # Mock the job status response for 'running' state with increasing progress
-    responses = [
-        {"status": "running", "status_details": {"progress": 50}},
-        {"status": "running", "status_details": {"progress": 75}},
-        {"status": "completed", "status_details": {"progress": 100}},
-    ]
-    mock_response = MagicMock()
-    mock_response.json = MagicMock(side_effect=responses)
-
-    with patch("requests.get", return_value=mock_response):
-        result = evaluator.wait_for_evaluation(
-            job_id=job_id,
-            evaluation=mock_evaluation,
-            polling_interval=0.1,  # Reduce polling interval for test
-            timeout=1,
-            progress_callback=progress_callback,
-        )
-
-        # Verify progress callback was called with correct progress
-        assert len(progress_updates) > 0
-        assert progress_updates[0]["progress"] == 50.0
-        assert result["status"] == "completed"
-
-
-def test_wait_for_evaluation_completed_state(
-    evaluator: Evaluator, mock_evaluation: NIMEvaluation
-) -> None:
-    """Test handling of 'completed' state in wait_for_evaluation"""
-    job_id = "test-job-id"
-    progress_updates: list[dict[str, Any]] = []
-
-    def progress_callback(update_data: dict[str, Any]) -> None:
-        progress_updates.append(update_data)
-
-    # Mock the job status response for 'completed' state
-    mock_response = MagicMock()
-    mock_response.json.return_value = {"status": "completed", "status_details": {"progress": 100}}
-
-    with patch("requests.get", return_value=mock_response):
-        result = evaluator.wait_for_evaluation(
-            job_id=job_id,
-            evaluation=mock_evaluation,
-            polling_interval=1,
-            timeout=1,
-            progress_callback=progress_callback,
-        )
-
-        # Verify progress callback was called with 100% progress
-        assert len(progress_updates) > 0
-        assert progress_updates[0]["progress"] == 100.0
-        # Verify the job data was returned
-        assert result["status"] == "completed"
-
-
-def test_wait_for_evaluation_error_state(
-    evaluator: Evaluator, mock_evaluation: NIMEvaluation
-) -> None:
+def test_wait_for_evaluation_error_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
     """Test handling of error state in wait_for_evaluation"""
     job_id = "test-job-id"
 
     # Mock the job status response for error state
     mock_response = MagicMock()
+    mock_response.status_code = 200
     mock_response.json.return_value = {
         "status": "failed",
         "status_details": {"error": "Test error"},
     }
 
-    with patch("requests.get", return_value=mock_response):
-        with pytest.raises(Exception) as exc_info:
-            evaluator.wait_for_evaluation(
-                job_id=job_id, evaluation=mock_evaluation, polling_interval=1, timeout=1
-            )
+    # Mock get_db_manager to prevent actual DB calls
+    with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        mock_db_manager = mock_get_db_manager.return_value
+        mock_db_manager.is_flywheel_run_cancelled.return_value = False
+        with patch("requests.get", return_value=mock_response):
+            with pytest.raises(Exception) as exc_info:
+                evaluator.wait_for_evaluation(
+                    job_id=job_id,
+                    flywheel_run_id=sample_flywheel_run_id,
+                    polling_interval=1,
+                    timeout=1,
+                )
+            assert "Test error" in str(exc_info.value)
 
-        assert "Job status: failed" in str(exc_info.value)
 
-
-def test_wait_for_evaluation_timeout(evaluator: Evaluator, mock_evaluation: NIMEvaluation) -> None:
-    """Test timeout handling in wait_for_evaluation"""
+def test_wait_for_evaluation_timeout(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+    """Test timeout in wait_for_evaluation"""
     job_id = "test-job-id"
-    progress_updates: list[dict[str, Any]] = []
 
-    def progress_callback(update_data: dict[str, Any]) -> None:
-        progress_updates.append(update_data)
-
-    # Mock the job status response to always return same progress
+    # Mock the job status response for running state (never completes)
     mock_response = MagicMock()
-    mock_response.json.return_value = {"status": "running", "status_details": {"progress": 50}}
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "status": "running",
+        "status_details": {"progress": 50},
+    }
 
-    with patch("requests.get", return_value=mock_response):
-        with pytest.raises(TimeoutError) as exc_info:
-            evaluator.wait_for_evaluation(
-                job_id=job_id,
-                evaluation=mock_evaluation,
-                polling_interval=1,
-                timeout=1,
-                progress_callback=progress_callback,
-            )
-        assert "stalled for more than 1 seconds" in str(exc_info.value)
-
-        # Verify progress callback was called with the stalled progress
-        assert len(progress_updates) > 0
-        assert progress_updates[-1]["progress"] == 0.0
-        assert "error" in progress_updates[-1]
+    # Mock get_db_manager to prevent actual DB calls
+    with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        mock_db_manager = mock_get_db_manager.return_value
+        mock_db_manager.is_flywheel_run_cancelled.return_value = False
+        with patch("requests.get", return_value=mock_response):
+            with pytest.raises(TimeoutError):
+                evaluator.wait_for_evaluation(
+                    job_id=job_id,
+                    flywheel_run_id=sample_flywheel_run_id,
+                    polling_interval=1,
+                    timeout=1,
+                )
 
 
-def test_wait_for_evaluation_none_progress(
-    evaluator: Evaluator, mock_evaluation: NIMEvaluation
-) -> None:
-    """Test handling of None progress value in wait_for_evaluation"""
+def test_wait_for_evaluation_none_progress(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+    """Test handling of None progress in wait_for_evaluation"""
     job_id = "test-job-id"
-    progress_updates: list[dict[str, Any]] = []
-
-    def progress_callback(update_data: dict[str, Any]) -> None:
-        progress_updates.append(update_data)
 
     # Mock the job status response with None progress
     mock_response = MagicMock()
-    mock_response.json.return_value = {"status": "running", "status_details": {"progress": None}}
+    mock_response.status_code = 200
+    mock_response.json.return_value = {
+        "status": "running",
+        "status_details": {"progress": None},
+    }
 
-    with patch("requests.get", return_value=mock_response):
-        with pytest.raises(TimeoutError) as exc_info:
-            evaluator.wait_for_evaluation(
-                job_id=job_id,
-                evaluation=mock_evaluation,
-                polling_interval=1,
-                timeout=1,
-                progress_callback=progress_callback,
-            )
-        assert "stalled for more than 1 seconds" in str(exc_info.value)
-
-        # Verify progress callback was called with 0 progress
-        assert len(progress_updates) > 0
-        assert progress_updates[0]["progress"] == 0.0
+    # Mock get_db_manager to prevent actual DB calls
+    with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        mock_db_manager = mock_get_db_manager.return_value
+        mock_db_manager.is_flywheel_run_cancelled.return_value = False
+        with patch("requests.get", return_value=mock_response):
+            with pytest.raises(TimeoutError):
+                evaluator.wait_for_evaluation(
+                    job_id=job_id,
+                    flywheel_run_id=sample_flywheel_run_id,
+                    polling_interval=1,
+                    timeout=1,
+                )
 
 
 def make_remote_judge_config():
@@ -227,7 +211,7 @@ def make_remote_judge_config():
     return LLMJudgeConfig(
         type="remote",
         url="http://test-remote-url/v1/chat/completions",
-        model_id="remote-model-id",
+        model_name="remote-model-id",
         api_key_env="TEST_API_KEY_ENV",
         api_key="test-api-key",
     )
@@ -252,12 +236,13 @@ def test_evaluator_uses_remote_judge_config(monkeypatch):
     from src.lib.nemo.evaluator import Evaluator
 
     remote_cfg = make_remote_judge_config()
+    judge_model_config = remote_cfg.judge_model_config()
     monkeypatch.setattr("src.config.settings.llm_judge_config", remote_cfg)
-    evaluator = Evaluator()
+    evaluator = Evaluator(judge_model_config=judge_model_config)
     # Should use the remote config dict
-    assert isinstance(evaluator.judge_model_config, dict)
+    assert isinstance(judge_model_config, dict)
     assert evaluator.judge_model_config["api_endpoint"]["url"] == remote_cfg.url
-    assert evaluator.judge_model_config["api_endpoint"]["model_id"] == remote_cfg.model_id
+    assert evaluator.judge_model_config["api_endpoint"]["model_id"] == remote_cfg.model_name
     assert evaluator.judge_model_config["api_endpoint"]["api_key"] == remote_cfg.api_key
 
 
@@ -265,8 +250,9 @@ def test_evaluator_uses_local_judge_config(monkeypatch):
     from src.lib.nemo.evaluator import Evaluator
 
     local_cfg = make_local_judge_config()
+    judge_model_config = local_cfg.judge_model_config()
     monkeypatch.setattr("src.config.settings.llm_judge_config", local_cfg)
-    evaluator = Evaluator()
+    evaluator = Evaluator(judge_model_config=judge_model_config)
     # Should use the local model name
     assert evaluator.judge_model_config == local_cfg.model_name
 
@@ -275,14 +261,14 @@ def test_evaluator_prefers_explicit_llm_judge_config(monkeypatch):
     from src.lib.nemo.evaluator import Evaluator
 
     remote_cfg = make_remote_judge_config()
+    judge_model_config = remote_cfg.judge_model_config()
     monkeypatch.setattr("src.config.settings.llm_judge_config", remote_cfg)
 
     # If you pass an explicit NIMConfig, it should use that model_name
-    class DummyNIMConfig:
-        model_name = "explicit-model"
-
-    evaluator = Evaluator(llm_judge_config=DummyNIMConfig())
-    assert evaluator.judge_model_config == "explicit-model"
+    model_name = "explicit-model"
+    judge_model_config["api_endpoint"]["model_id"] = model_name
+    evaluator = Evaluator(judge_model_config=judge_model_config)
+    assert evaluator.judge_model_config["api_endpoint"]["model_id"] == "explicit-model"
 
 
 @pytest.fixture
@@ -311,7 +297,7 @@ def evaluator_instance(mock_nemo_url_val, mock_judge_model_name_val):
         mock_local_nim_cfg.model_name = mock_judge_model_name_val
         mock_judge_cfg.get_local_nim_config.return_value = mock_local_nim_cfg
 
-        mock_settings.llm_judge_config = mock_judge_cfg
+        mock_settings.judge_model_config = mock_judge_cfg
 
         yield Evaluator()
 
@@ -333,7 +319,6 @@ class TestRunEvaluation:
             {
                 "workload_type": WorkloadClassification.GENERIC,
                 "tool_eval_type": None,
-                "namespace": "test-namespace",
                 "dataset_name": "test-dataset",
                 "target_model": "meta/llama-3.3-70b-instruct",
                 "test_file": "test.jsonl",
@@ -345,7 +330,6 @@ class TestRunEvaluation:
             {
                 "workload_type": WorkloadClassification.TOOL_CALLING,
                 "tool_eval_type": None,
-                "namespace": "test-namespace",
                 "dataset_name": "test-dataset",
                 "target_model": "meta/llama-3.3-70b-instruct",
                 "test_file": "test-tools.jsonl",
@@ -358,7 +342,6 @@ class TestRunEvaluation:
             {
                 "workload_type": WorkloadClassification.TOOL_CALLING,
                 "tool_eval_type": ToolEvalType.TOOL_CALLING_METRIC,
-                "namespace": "test-tool-namespace",
                 "dataset_name": "test-tool-dataset",
                 "target_model": "custom/tool-model",
                 "test_file": "tools-data.jsonl",
@@ -388,7 +371,6 @@ class TestRunEvaluation:
                     test_params["expected_error"], match=test_params["expected_error_msg"]
                 ):
                     evaluator_instance.run_evaluation(
-                        namespace=test_params["namespace"],
                         dataset_name=test_params["dataset_name"],
                         workload_type=test_params["workload_type"],
                         target_model=test_params["target_model"],
@@ -400,14 +382,12 @@ class TestRunEvaluation:
 
             config_method = getattr(evaluator_instance, test_params["expected_config_method"])
             expected_config_payload = config_method(
-                namespace=test_params["namespace"],
                 dataset_name=test_params["dataset_name"],
                 test_file=test_params["test_file"],
                 limit=test_params["limit"],
             )
 
             job_id = evaluator_instance.run_evaluation(
-                namespace=test_params["namespace"],
                 dataset_name=test_params["dataset_name"],
                 workload_type=test_params["workload_type"],
                 tool_eval_type=test_params["tool_eval_type"],
@@ -447,7 +427,6 @@ def test_run_evaluation_limit_propagation(evaluator_instance, mock_response, lim
 
             # Call run_evaluation with limit
             evaluator_instance.run_evaluation(
-                namespace="test-namespace",
                 dataset_name="test-dataset",
                 workload_type=WorkloadClassification.GENERIC,
                 target_model="test-model",
@@ -457,7 +436,6 @@ def test_run_evaluation_limit_propagation(evaluator_instance, mock_response, lim
 
             # Verify config method was called with correct limit
             mock_config_method.assert_called_once_with(
-                namespace="test-namespace",
                 dataset_name="test-dataset",
                 test_file="test.jsonl",
                 limit=limit,

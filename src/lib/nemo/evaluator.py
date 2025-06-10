@@ -17,9 +17,9 @@ from typing import Any
 
 import requests
 
-from src.api.models import NIMEvaluation, ToolEvalType, WorkloadClassification
-from src.config import NIMConfig, settings
-from src.lib.nemo.dms_client import DMSClient
+from src.api.models import ToolEvalType, WorkloadClassification
+from src.config import settings
+from src.lib.flywheel.cancellation import check_cancellation
 from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.nemo.evaluator")
@@ -87,7 +87,7 @@ TOOL_CALLING_JUDGE_PROMPT = """
 class Evaluator:
     def __init__(
         self,
-        llm_judge_config: NIMConfig | None = None,
+        judge_model_config: Any | None = None,
         include_tools: bool = False,
         include_tool_choice: bool = False,
         include_nvext: bool = False,
@@ -97,89 +97,11 @@ class Evaluator:
         """
         self.nemo_url = settings.nmp_config.nemo_base_url
         assert self.nemo_url, "nemo_base_url must be set in config"
+        self.namespace = settings.nmp_config.nmp_namespace
+        self.judge_model_config = judge_model_config
         self.include_tools = include_tools
         self.include_tool_choice = include_tool_choice
         self.include_nvext = include_nvext
-
-        judge_cfg = settings.llm_judge_config
-        if llm_judge_config:
-            # Local judge config provided explicitly
-            self.judge_model_config = llm_judge_config.model_name
-        elif judge_cfg.is_remote():
-            self.judge_model_config = judge_cfg.get_remote_config()
-        else:
-            self.judge_model_config = judge_cfg.get_local_nim_config().model_name
-
-    def spin_up_llm_judge(self) -> bool:
-        judge_cfg = settings.llm_judge_config
-        llm_judge_config = judge_cfg.get_local_nim_config()
-        dms_client = DMSClient(nmp_config=settings.nmp_config, nim=llm_judge_config)
-
-        if not dms_client.is_deployed():
-            logger.info(f"Deploying LLM Judge {llm_judge_config.model_name}")
-
-            try:
-                dms_client.deploy_model()
-            except Exception as e:
-                logger.error(f"Error deploying LLM Judge {llm_judge_config.model_name}: {e}")
-                raise e
-        else:
-            logger.info(f"LLM Judge {llm_judge_config.model_name} is already deployed")
-
-        return True
-
-    def validate_llm_judge_availability(self) -> bool:
-        """Ensure the configured LLM judge endpoint is reachable.
-
-        If the judge is configured as a *remote* service we make a minimal
-        inference request ("hi") to the chat-completion endpoint to verify it
-        is operational.  Any failure will raise an exception so that the
-        hosting process (e.g. a Celery worker) fails fast instead of running
-        without a functional judge.
-        """
-
-        judge_cfg = settings.llm_judge_config
-
-        # No check needed for local (NIM) judge
-        # it will be spun-up inside NMP
-        if not judge_cfg.is_remote():
-            return self.spin_up_llm_judge()
-
-        url = judge_cfg.url
-        model_id = judge_cfg.model_id
-
-        if not url or not model_id:
-            raise RuntimeError("Remote LLM judge configuration is missing 'url' or 'model_id'.")
-
-        headers = {"Content-Type": "application/json"}
-        # Optional API key support - many internal endpoints don't need it, but
-        # when provided we include it.
-        if judge_cfg.api_key:
-            headers["Authorization"] = f"Bearer {judge_cfg.api_key}"
-
-        payload = {
-            "model": model_id,
-            "messages": [{"role": "user", "content": "hi"}],
-        }
-
-        try:
-            resp = requests.post(url, json=payload, headers=headers)
-            if resp.status_code != 200:
-                return False
-
-            # Basic structural validation - we expect a JSON with a 'choices' field
-            data = resp.json()
-            if "choices" not in data:
-                return False
-
-            logger.info("Remote LLM judge is reachable and responded successfully.")
-
-            return True
-
-        except Exception:
-            logger.exception("Unable to reach remote LLM judge - aborting worker startup.")
-            # Re-raise to fail fast (Celery worker will exit)
-            return False
 
     def get_judge_metrics(self) -> dict[str, Any]:
         return {
@@ -210,22 +132,21 @@ class Evaluator:
         }
 
     def _create_dataset_config(
-        self, namespace: str, dataset_name: str, test_file: str, limit: int | None = None
+        self, dataset_name: str, test_file: str, limit: int | None = None
     ) -> dict[str, Any]:
         """Create dataset configuration with optional limit parameter."""
-        dataset_config = {"files_url": f"hf://datasets/{namespace}/{dataset_name}/{test_file}"}
+        dataset_config = {"files_url": f"hf://datasets/{self.namespace}/{dataset_name}/{test_file}"}
         if limit is not None:
             dataset_config["limit"] = limit
         return dataset_config
 
     def get_tool_llm_as_judge_config(
-        self, namespace: str, dataset_name: str, test_file: str, limit: int | None = None
+        self, dataset_name: str, test_file: str, limit: int | None = None
     ) -> dict[str, Any]:
         """
         Get LLM as judge evaluation configuration.
 
         Args:
-            namespace: Namespace of the dataset
             dataset_name: Name of the dataset
             test_file: Name of the test file in the dataset
             limit: Maximum number of samples to evaluate
@@ -238,9 +159,7 @@ class Evaluator:
             "tasks": {
                 "llm-as-judge": {
                     "type": "chat-completion",
-                    "dataset": self._create_dataset_config(
-                        namespace, dataset_name, test_file, limit
-                    ),
+                    "dataset": self._create_dataset_config(dataset_name, test_file, limit),
                     "params": self.get_template(tool_call=True),
                     "metrics": self.get_tool_judge_metrics(),
                 }
@@ -295,13 +214,12 @@ class Evaluator:
         return {"template": template}
 
     def get_llm_as_judge_config(
-        self, namespace: str, dataset_name: str, test_file: str, limit: int | None = None
+        self, dataset_name: str, test_file: str, limit: int | None = None
     ) -> dict[str, Any]:
         """
         Get LLM as judge evaluation configuration.
 
         Args:
-            namespace: Namespace of the dataset
             dataset_name: Name of the dataset
             test_file: Name of the test file in the dataset
             limit: Maximum number of samples to evaluate
@@ -314,9 +232,7 @@ class Evaluator:
             "tasks": {
                 "llm-as-judge": {
                     "type": "chat-completion",
-                    "dataset": self._create_dataset_config(
-                        namespace, dataset_name, test_file, limit
-                    ),
+                    "dataset": self._create_dataset_config(dataset_name, test_file, limit),
                     "params": self.get_template(),
                     "metrics": self.get_judge_metrics(),
                 }
@@ -346,13 +262,12 @@ class Evaluator:
         }
 
     def get_tool_calling_config(
-        self, namespace: str, dataset_name: str, test_file: str, limit: int | None = None
+        self, dataset_name: str, test_file: str, limit: int | None = None
     ) -> dict[str, Any]:
         """
         Get tool calling evaluation configuration.
 
         Args:
-            namespace: Namespace of the dataset
             dataset_name: Name of the dataset
             test_file: Name of the test file in the dataset
             limit: Maximum number of samples to evaluate
@@ -365,9 +280,7 @@ class Evaluator:
             "tasks": {
                 "custom-tool-calling": {
                     "type": "chat-completion",
-                    "dataset": self._create_dataset_config(
-                        namespace, dataset_name, test_file, limit
-                    ),
+                    "dataset": self._create_dataset_config(dataset_name, test_file, limit),
                     "params": self.get_template(tool_call=True),
                     "metrics": self.get_tool_calling_metrics(),
                 },
@@ -402,7 +315,7 @@ class Evaluator:
     def wait_for_evaluation(
         self,
         job_id: str,
-        evaluation: NIMEvaluation,
+        flywheel_run_id: str,
         polling_interval: int = 10,
         timeout: int = 6000,
         progress_callback=None,
@@ -412,7 +325,6 @@ class Evaluator:
 
         Args:
             job_id: ID of the evaluation job
-            evaluation: The NIMEvaluation object to update
             polling_interval: Time in seconds between status checks
             timeout: Maximum time in seconds to wait before timing out if progress stalls
             progress_callback: Optional callback function for progress updates
@@ -428,6 +340,13 @@ class Evaluator:
         last_progress = 0.0
 
         while True:
+            # Check for cancellation and exit if cancelled.
+            try:
+                check_cancellation(flywheel_run_id)
+            except Exception as e:
+                logger.info(f"Evaluation wait cancelled: {e}")
+                raise e
+
             current_time = time()
             if current_time - start_time > timeout:
                 error_message = f"Evaluation stalled for more than {timeout} seconds"
@@ -514,7 +433,6 @@ class Evaluator:
 
     def run_evaluation(
         self,
-        namespace: str,
         dataset_name: str,
         workload_type: WorkloadClassification,
         target_model: str | dict[str, Any],
@@ -526,7 +444,6 @@ class Evaluator:
         Run a complete evaluation workflow.
 
         Args:
-            namespace: Namespace of the dataset
             dataset_name: Name of the dataset
             workload_type: Type of workload to evaluate
             tool_eval_type: Type of tool evaluation to perform if workload is tool calling
@@ -542,15 +459,15 @@ class Evaluator:
 
             if tool_eval_type == ToolEvalType.TOOL_CALLING_METRIC:
                 config = self.get_tool_calling_config(
-                    namespace=namespace, dataset_name=dataset_name, test_file=test_file, limit=limit
+                    dataset_name=dataset_name, test_file=test_file, limit=limit
                 )
             elif tool_eval_type == ToolEvalType.TOOL_CALLING_JUDGE:
                 config = self.get_tool_llm_as_judge_config(
-                    namespace=namespace, dataset_name=dataset_name, test_file=test_file, limit=limit
+                    dataset_name=dataset_name, test_file=test_file, limit=limit
                 )
         else:
             config = self.get_llm_as_judge_config(
-                namespace=namespace, dataset_name=dataset_name, test_file=test_file, limit=limit
+                dataset_name=dataset_name, test_file=test_file, limit=limit
             )
 
         res = requests.post(
@@ -560,3 +477,23 @@ class Evaluator:
 
         assert res.status_code in (200, 201), f"Failed to launch evaluation job: {res.text}"
         return res.json()["id"]
+
+    def delete_evaluation_job(self, job_id: str) -> None:
+        """
+        Delete an evaluation job.
+
+        Args:
+            job_id: ID of the evaluation job to delete
+
+        Raises:
+            Exception: If deletion fails
+        """
+        delete_url = f"{self.nemo_url}/v1/evaluation/jobs/{job_id}"
+        response = requests.delete(delete_url, headers={"accept": "application/json"})
+
+        if response.status_code not in (200, 204):
+            error_msg = f"Failed to delete evaluation job {job_id}: Status {response.status_code} - {response.text}"
+            logger.error(error_msg)
+            raise Exception(error_msg)
+
+        logger.info(f"Successfully deleted evaluation job {job_id}")

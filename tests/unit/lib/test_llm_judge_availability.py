@@ -12,7 +12,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-"""Unit tests for Evaluator.validate_llm_judge_availability.
+"""Unit tests for LLMAsJudge.validate_llm_judge_availability.
 
 These tests focus on the different code-paths involved when verifying that the
 configured LLM judge can be reached.  The scenarios covered are:
@@ -29,7 +29,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from src.config import LLMJudgeConfig
-from src.lib.nemo.evaluator import Evaluator
+from src.lib.nemo.llm_as_judge import LLMAsJudge
 
 # ---------------------------------------------------------------------------
 # Helper builders
@@ -43,7 +43,7 @@ def make_remote_judge_config(**overrides):
     cfg_dict = {
         "type": "remote",
         "url": "http://remote-judge.test/v1/chat/completions",
-        "model_id": "remote-model-id",
+        "model_name": "remote-model-id",
         "api_key_env": "TEST_API_KEY_ENV",
         "api_key": "super-secret-key",
     }
@@ -82,10 +82,10 @@ def test_validate_llm_judge_availability_local_skips_remote_call(monkeypatch):
 
     # Patch Evaluator.spin_up_llm_judge to avoid external DMS interactions
     mock_spin_up = MagicMock(return_value=True)
-    monkeypatch.setattr(Evaluator, "spin_up_llm_judge", mock_spin_up)
+    monkeypatch.setattr(LLMAsJudge, "spin_up_llm_judge", mock_spin_up)
 
     # Act - should return True and avoid any HTTP calls
-    result = Evaluator().validate_llm_judge_availability()
+    result = LLMAsJudge().validate_llm_judge_availability()
 
     # Assert
     mock_post.assert_not_called()
@@ -109,36 +109,36 @@ def test_validate_llm_judge_availability_remote_happy_path(monkeypatch):
     monkeypatch.setattr("requests.post", mock_post)
 
     # Act - should return True indicating the judge is reachable
-    result = Evaluator().validate_llm_judge_availability()
+    result = LLMAsJudge().validate_llm_judge_availability()
 
     # Assert - verify the outbound request was built correctly and a successful result is propagated
     mock_post.assert_called_once()
     _, kwargs = mock_post.call_args
-    assert kwargs["json"]["model"] == remote_cfg.model_id
+    assert kwargs["json"]["model"] == remote_cfg.model_name
     assert kwargs["headers"]["Authorization"] == f"Bearer {remote_cfg.api_key}"
     assert result is True
 
 
 @pytest.mark.parametrize(
-    "url,model_id,missing_field",
+    "url,model_name,missing_field",
     [
         (None, "some-model", "url"),
-        ("http://remote-judge.test/v1/chat/completions", None, "model_id"),
+        ("http://remote-judge.test/v1/chat/completions", None, "model_name"),
     ],
 )
 def test_validate_llm_judge_availability_remote_missing_config(
-    monkeypatch, url, model_id, missing_field
+    monkeypatch, url, model_name, missing_field
 ):
-    """Missing *url* or *model_id* values should raise a RuntimeError before any HTTP call."""
+    """Missing *url* or *model_name* values should raise a RuntimeError before any HTTP call."""
 
-    remote_cfg = make_remote_judge_config(url=url, model_id=model_id)
+    remote_cfg = make_remote_judge_config(url=url, model_name=model_name)
     monkeypatch.setattr("src.config.settings.llm_judge_config", remote_cfg)
 
     mock_post = MagicMock()
     monkeypatch.setattr("requests.post", mock_post)
 
-    with pytest.raises(RuntimeError, match="missing 'url' or 'model_id'"):
-        Evaluator().validate_llm_judge_availability()
+    with pytest.raises(RuntimeError, match="missing 'url' or 'model_name'"):
+        LLMAsJudge().validate_llm_judge_availability()
 
     mock_post.assert_not_called()
 
@@ -157,7 +157,7 @@ def test_validate_llm_judge_availability_remote_http_error(monkeypatch, status_c
     monkeypatch.setattr("requests.post", mock_post)
 
     # Act
-    result = Evaluator().validate_llm_judge_availability()
+    result = LLMAsJudge().validate_llm_judge_availability()
 
     # Assert - should return False indicating the judge is not reachable
     assert result is False
@@ -177,7 +177,7 @@ def test_validate_llm_judge_availability_remote_unexpected_payload(monkeypatch):
     monkeypatch.setattr("requests.post", mock_post)
 
     # Act
-    result = Evaluator().validate_llm_judge_availability()
+    result = LLMAsJudge().validate_llm_judge_availability()
 
     # Assert - should return False due to unexpected payload structure
     assert result is False

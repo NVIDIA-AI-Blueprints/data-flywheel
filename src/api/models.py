@@ -19,8 +19,8 @@ from typing import Any
 from bson import ObjectId
 from pydantic import BaseModel, Field
 
-from src.api.schemas import Dataset, DeploymentStatus
-from src.config import NIMConfig
+from src.api.schemas import Dataset, DeploymentStatus, FlywheelRunStatus, NIMRunStatus
+from src.config import DataSplitConfig, LLMJudgeConfig, NIMConfig
 
 
 class EvalType(str, Enum):
@@ -102,9 +102,10 @@ class TaskResult(BaseModel):
 
     # Separate customization tracking
     customization: CustomizationResult | None = None
-    llm_judge_config: NIMConfig | None = None
+    llm_judge_config: LLMJudgeConfig | None = None
     # Store error message if any stage fails so downstream tasks can short-circuit
     error: str | None = None
+    data_split_config: DataSplitConfig | None = None
 
     def add_evaluation(self, eval_type: EvalType, result: EvaluationResult):
         """Helper method to add/update evaluation results"""
@@ -158,6 +159,7 @@ class NIMEvaluation(BaseModel):
 
     id: ObjectId | None = Field(default_factory=ObjectId, alias="_id")
     nim_id: ObjectId
+    job_id: str | None = None
     eval_type: EvalType
     scores: dict[str, float]
     started_at: datetime
@@ -210,6 +212,7 @@ class NIMCustomization(BaseModel):
 
     id: ObjectId | None = Field(default_factory=ObjectId, alias="_id")
     nim_id: ObjectId
+    job_id: str | None = None
     workload_id: str
     base_model: str
     customized_model: str | None = None  # Make this optional since it's set after job starts
@@ -236,13 +239,6 @@ class NIMCustomization(BaseModel):
         return cls(**data)
 
 
-class NIMRunStatus(str, Enum):
-    DEPLOYING = "deploying-nim"
-    RUNNING = "running-evals"
-    COMPLETED = "complete"
-    ERROR = "error"
-
-
 class NIMRun(BaseModel):
     """Results from a NIM run."""
 
@@ -250,11 +246,11 @@ class NIMRun(BaseModel):
     flywheel_run_id: ObjectId
     model_name: str
     started_at: datetime
-    finished_at: datetime
+    finished_at: datetime | None = None
     runtime_seconds: float
     evaluations: list[NIMEvaluation] = []
     status: NIMRunStatus | None = None
-    deployment_status: DeploymentStatus | None = None
+    deployment_status: DeploymentStatus | None = None  # NMP status
     model_config = {"arbitrary_types_allowed": True, "json_encoders": {ObjectId: str}}
     error: str | None = None
 
@@ -276,6 +272,7 @@ class LLMJudgeRun(BaseModel):
     id: ObjectId | None = Field(default_factory=ObjectId, alias="_id")
     flywheel_run_id: ObjectId
     model_name: str
+    type: str
     deployment_status: DeploymentStatus | None = None
     model_config = {"arbitrary_types_allowed": True, "json_encoders": {ObjectId: str}}
     error: str | None = None
@@ -299,6 +296,7 @@ class FlywheelRun(BaseModel):
     workload_id: str
     started_at: datetime
     client_id: str = None
+    status: FlywheelRunStatus = Field(default=FlywheelRunStatus.PENDING)
     finished_at: datetime | None = None
     num_records: int | None = None
     nims: list[NIMRun] = []

@@ -37,6 +37,7 @@
 │ ✔          │ frozenlist         │ APACHE SOFTWARE LICENSE                    │
 │ ✔          │ fsspec             │ BSD LICENSE                                │
 │ ✔          │ h11                │ MIT LICENSE                                │
+│ ✔          │ hf-xet             │ APACHE-2.0                                 │
 │ ✔          │ httpcore           │ BSD LICENSE                                │
 │ ✔          │ httpx              │ BSD LICENSE                                │
 │ ✔          │ huggingface-hub    │ APACHE SOFTWARE LICENSE                    │
@@ -51,7 +52,6 @@
 │ ✔          │ pydantic           │ MIT LICENSE                                │
 │ ✔          │ pydantic-core      │ MIT LICENSE                                │
 │ ✔          │ pydantic-settings  │ MIT LICENSE                                │
-│ ✔          │ pyjwt              │ MIT LICENSE                                │
 │ ✔          │ pymongo            │ APACHE SOFTWARE LICENSE                    │
 │ ✔          │ python-dateutil    │ APACHE SOFTWARE LICENSE;; BSD LICENSE      │
 │ ✔          │ python-dotenv      │ BSD LICENSE                                │

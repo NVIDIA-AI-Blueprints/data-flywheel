@@ -17,9 +17,12 @@ from datetime import datetime
 from fastapi import APIRouter
 
 from src.api.db import get_db
-from src.api.job_service import get_job_details
+from src.api.job_service import cancel_job, delete_job, get_job_details
 from src.api.models import FlywheelRun
 from src.api.schemas import (
+    FlywheelRunStatus,
+    JobCancelResponse,
+    JobDeleteResponse,
     JobDetailResponse,
     JobListItem,
     JobRequest,
@@ -51,6 +54,7 @@ async def create_job(request: JobRequest) -> JobResponse:
         started_at=datetime.utcnow(),
         num_records=0,  # Will be updated when datasets are created
         nims=[],
+        status=FlywheelRunStatus.PENDING,
     )
 
     # Save to MongoDB
@@ -64,6 +68,9 @@ async def create_job(request: JobRequest) -> JobResponse:
         workload_id=request.workload_id,
         flywheel_run_id=flywheel_run.id,
         client_id=request.client_id,
+        data_split_config=request.data_split_config.model_dump()
+        if request.data_split_config
+        else None,
     )
 
     return JobResponse(id=flywheel_run.id, status="queued", message="NIM workflow started")
@@ -84,7 +91,7 @@ async def get_jobs() -> JobsListResponse:
             id=str(flywheel_run.id),
             workload_id=flywheel_run.workload_id,
             client_id=flywheel_run.client_id,
-            status="completed" if flywheel_run.finished_at else "running",
+            status=flywheel_run.status,
             started_at=flywheel_run.started_at,
             finished_at=flywheel_run.finished_at,
             datasets=flywheel_run.datasets,
@@ -101,3 +108,27 @@ async def get_job(job_id: str) -> JobDetailResponse:
     Get the status and result of a job, including detailed information about all tasks in the workflow.
     """
     return get_job_details(job_id)
+
+
+@router.delete("/jobs/{job_id}", response_model=JobDeleteResponse)
+async def delete_job_endpoint(job_id: str) -> JobDeleteResponse:
+    """
+    Delete a job and all its associated resources from the database.
+    This is an asynchronous operation - the endpoint returns immediately while
+    the deletion continues in the background.
+
+    If the job is still running, it must be cancelled first.
+    """
+    return delete_job(job_id)
+
+
+@router.post("/jobs/{job_id}/cancel", response_model=JobCancelResponse)
+async def cancel_job_endpoint(job_id: str) -> JobCancelResponse:
+    """
+    Cancel a running job.
+    This will stop the job execution and mark it as cancelled.
+
+    The job must be in a running state to be cancelled.
+    Already finished jobs cannot be cancelled.
+    """
+    return cancel_job(job_id)

@@ -19,6 +19,7 @@ from typing import Any
 import requests
 
 from src.config import NIMConfig, NMPConfig
+from src.lib.flywheel.cancellation import check_cancellation
 from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.nemo.dms_client")
@@ -87,7 +88,10 @@ class DMSClient:
         return response.json()["status_details"]["status"]
 
     def wait_for_deployment(
-        self, progress_callback: Callable[[str], None] | None = None, timeout: int = 3600
+        self,
+        flywheel_run_id: str,
+        progress_callback: Callable[[str], None] | None = None,
+        timeout: int = 3600,
     ):
         """Wait for a deployment to complete.
 
@@ -101,6 +105,12 @@ class DMSClient:
         start_time = time.time()
 
         while time.time() - start_time < timeout:
+            try:
+                check_cancellation(flywheel_run_id)
+            except Exception as e:
+                logger.info(f"Deployment wait cancelled: {e}")
+                raise e
+
             status = self.get_deployment_status()
 
             if progress_callback is not None:
@@ -111,6 +121,7 @@ class DMSClient:
                 if progress_callback is not None:
                     progress_callback({"status": status})
                 return
+            # wait before next check
             time.sleep(5)
         error_message = f"Deployment did not complete within {timeout} seconds"
         if progress_callback is not None:
@@ -118,7 +129,11 @@ class DMSClient:
         raise TimeoutError(error_message)
 
     def wait_for_model_sync(
-        self, model_name: str, check_interval: int = 30, timeout: int = 3600
+        self,
+        model_name: str,
+        flywheel_run_id: str,
+        check_interval: int = 30,
+        timeout: int = 3600,
     ) -> dict[str, Any]:
         """
         Wait for a model to be synced to the NMP.
@@ -127,6 +142,13 @@ class DMSClient:
         start_time = time.time()
 
         while True:
+            # Check for cancellation
+            try:
+                check_cancellation(flywheel_run_id)
+            except Exception as e:
+                logger.info(f"Model sync wait cancelled: {e}")
+                raise e
+
             response = requests.get(f"{self.nmp_config.nim_base_url}/v1/models")
             if response.status_code != 200:
                 msg = f"Failed to get models list. Status: {response.status_code}, Response: {response.text}"
@@ -141,7 +163,7 @@ class DMSClient:
                 msg = f"Model {model_name} did not sync within {timeout} second: {models_data}"
                 logger.error(msg)
                 raise TimeoutError(msg)
-
+            # wait before next check
             time.sleep(check_interval)
 
     def shutdown_deployment(self):

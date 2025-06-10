@@ -13,19 +13,30 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+
 from bson import ObjectId
 from bson.errors import InvalidId
 from fastapi import HTTPException
 
 from src.api.db import get_db
-from src.api.models import DeploymentStatus, FlywheelRun
+from src.api.db_manager import get_db_manager
+from src.api.models import FlywheelRun
 from src.api.schemas import (
     Customization,
+    DeploymentStatus,
     Evaluation,
+    FlywheelRunStatus,
+    JobCancelResponse,
+    JobDeleteResponse,
     JobDetailResponse,
     LLMJudgeResponse,
     NIMResponse,
+    NIMRunStatus,
 )
+from src.log_utils import setup_logging
+from src.tasks.tasks import delete_job_resources
+
+logger = setup_logging("data_flywheel.job_service")
 
 
 def validate_object_id(id_str: str, param_name: str = "id") -> ObjectId:
@@ -141,6 +152,7 @@ def get_job_details(job_id: str) -> JobDetailResponse:
     if llm_judge:
         llm_judge_response = LLMJudgeResponse(
             model_name=llm_judge["model_name"],
+            type=llm_judge["type"],
             deployment_status=DeploymentStatus(
                 llm_judge["deployment_status"] or DeploymentStatus.PENDING
             ),
@@ -153,11 +165,7 @@ def get_job_details(job_id: str) -> JobDetailResponse:
         id=str(flywheel_run.id),
         workload_id=flywheel_run.workload_id,
         client_id=flywheel_run.client_id,
-        status="failed"
-        if flywheel_run.error
-        else "completed"
-        if flywheel_run.finished_at
-        else "running",
+        status=flywheel_run.status,
         started_at=flywheel_run.started_at,
         finished_at=flywheel_run.finished_at,
         num_records=flywheel_run.num_records or 0,
@@ -165,9 +173,11 @@ def get_job_details(job_id: str) -> JobDetailResponse:
         nims=[
             NIMResponse(
                 model_name=nim["model_name"],
+                status=NIMRunStatus(nim.get("status", NIMRunStatus.PENDING)).value,
                 deployment_status=DeploymentStatus(
                     nim["deployment_status"] or DeploymentStatus.PENDING
                 ),
+                runtime_seconds=nim["runtime_seconds"],
                 evaluations=nim_evaluations.get(nim["_id"], []),
                 customizations=nim_customizations.get(nim["_id"], []),
                 error=nim.get("error", None),
@@ -177,3 +187,122 @@ def get_job_details(job_id: str) -> JobDetailResponse:
         datasets=flywheel_run.datasets,
         error=flywheel_run.error,
     )
+
+
+def delete_job(job_id: str) -> JobDeleteResponse:
+    """
+    Delete a job and all its associated resources from the database.
+    This is an asynchronous operation that starts the deletion process in the background.
+
+    Args:
+        job_id: ID of the job to delete
+
+    Returns:
+        JobResponse: Response indicating the deletion has started
+
+    Raises:
+        HTTPException:
+            - 404 if job not found
+            - 400 if job is still running or job_id format is invalid
+            - 500 if task initiation fails
+    """
+    logger.info(f"Request received to delete job with ID: {job_id}")
+
+    try:
+        # Validate job_id and convert to ObjectId
+        job_object_id = validate_object_id(job_id, "job_id")
+
+        # Get the flywheel run document
+        db = get_db()
+        flywheel_run = db.flywheel_runs.find_one({"_id": job_object_id})
+        if not flywheel_run:
+            raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
+
+        # Convert to model for type-safe access
+        flywheel_run = FlywheelRun.from_mongo(flywheel_run)
+
+        # Check if job is still running
+        if not flywheel_run.finished_at:
+            raise HTTPException(
+                status_code=400, detail="Cannot delete a running job. Please cancel the job first."
+            )
+
+        # Fire off the Celery task with validated job_id
+        delete_job_resources.delay(str(job_object_id))
+
+        return JobDeleteResponse(
+            id=str(job_object_id),
+            message="Job deletion started. Resources will be cleaned up in the background.",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to initiate job deletion for {job_id}: {e!s}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg) from e
+
+
+def cancel_job(job_id: str) -> JobCancelResponse:
+    """
+    Cancel a running job and mark it as cancelled.
+    This will stop the job execution and clean up resources.
+
+    Args:
+        job_id: ID of the job to cancel
+
+    Returns:
+        JobCancelResponse: Response indicating the cancellation status
+
+    Raises:
+        HTTPException:
+            - 404 if job not found
+            - 400 if job is already finished or job_id format is invalid
+            - 500 if cancellation fails
+    """
+    logger.info(f"Request received to cancel job with ID: {job_id}")
+
+    try:
+        # Validate job_id and convert to ObjectId
+        job_object_id = validate_object_id(job_id, "job_id")
+
+        # Get the flywheel run document
+        flywheel_run = get_db_manager().get_flywheel_run(job_object_id)
+        if not flywheel_run:
+            raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
+
+        # Convert to model for type-safe access
+        flywheel_run = FlywheelRun.from_mongo(flywheel_run)
+
+        # Check if job is already finished
+        if flywheel_run.finished_at:
+            raise HTTPException(
+                status_code=400, detail="Cannot cancel a job that has already finished."
+            )
+
+        # Check if job is already cancelled
+        if flywheel_run.status == FlywheelRunStatus.CANCELLED.value:
+            return JobCancelResponse(
+                id=str(job_object_id),
+                message="Job is already cancelled.",
+            )
+
+        # Mark the flywheel run as cancelled
+        get_db_manager().mark_flywheel_run_cancelled(
+            job_object_id,
+            error_msg="Job cancelled by user",
+        )
+
+        logger.info(f"Successfully cancelled job with ID: {job_id}")
+
+        return JobCancelResponse(
+            id=str(job_object_id),
+            message="Job cancellation initiated successfully.",
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        error_msg = f"Failed to cancel job {job_id}: {e!s}"
+        logger.error(error_msg)
+        raise HTTPException(status_code=500, detail=error_msg) from e

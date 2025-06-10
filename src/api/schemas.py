@@ -17,6 +17,52 @@ from enum import Enum
 
 from pydantic import BaseModel, Field
 
+from src.config import DataSplitConfig
+
+# ============================================================================
+# ENUMS (Shared between API and Database)
+# ============================================================================
+
+
+class DeploymentStatus(str, Enum):
+    """Status details of the deployment."""
+
+    CREATED = "created"
+    PENDING = "pending"
+    RUNNING = "running"
+    CANCELLED = "cancelled"
+    CANCELLING = "cancelling"
+    FAILED = "failed"
+    COMPLETED = "completed"
+    READY = "ready"
+    UNKNOWN = "unknown"
+
+
+class NIMRunStatus(str, Enum):
+    """Status of a NIM run workflow."""
+
+    PENDING = "pending"
+    DEPLOYING = "deploying-nim"
+    RUNNING = "running-evals"
+    CANCELLED = "cancelled"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+
+class FlywheelRunStatus(str, Enum):
+    """Status of a Flywheel run workflow."""
+
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    CANCELLED = "cancelled"
+    FAILED = "failed"
+
+
+# ============================================================================
+# API REQUEST MODELS
+# ============================================================================
+
 
 class JobRequest(BaseModel):
     """Request model for creating a new NIM workflow job."""
@@ -32,6 +78,16 @@ class JobRequest(BaseModel):
         description="The unique identifier of the client to process",
         examples=["client_123"],
     )
+
+    data_split_config: DataSplitConfig | None = Field(
+        None,
+        description="Optional configuration for data splitting. If not provided, default config will be used.",
+    )
+
+
+# ============================================================================
+# API RESPONSE MODELS
+# ============================================================================
 
 
 class JobResponse(BaseModel):
@@ -52,6 +108,36 @@ class JobResponse(BaseModel):
         ...,
         description="Human-readable message about the job status",
         examples=["NIM workflow started"],
+    )
+
+
+class JobDeleteResponse(BaseModel):
+    """Response model for job deletion."""
+
+    id: str = Field(
+        ...,
+        description="The unique identifier of the created job",
+        examples=["65f8a1b2c3d4e5f6a7b8c9d0"],
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable message about the job status",
+        examples=["NIM workflow started"],
+    )
+
+
+class JobCancelResponse(BaseModel):
+    """Response model for job cancellation."""
+
+    id: str = Field(
+        ...,
+        description="The unique identifier of the job",
+        examples=["65f8a1b2c3d4e5f6a7b8c9d0"],
+    )
+    message: str = Field(
+        ...,
+        description="Human-readable message about the cancellation",
+        examples=["Job cancellation initiated"],
     )
 
 
@@ -206,40 +292,39 @@ class Customization(BaseModel):
     )
 
 
-class DeploymentStatus(str, Enum):
-    """Status details of the deployment."""
-
-    CREATED = "created"
-    PENDING = "pending"
-    RUNNING = "running"
-    CANCELLED = "cancelled"
-    CANCELLING = "cancelling"
-    FAILED = "failed"
-    COMPLETED = "completed"
-    READY = "ready"
-    UNKNOWN = "unknown"
-
-
 class NIMResponse(BaseModel):
     """Model representing a NIM and its evaluations."""
 
     model_name: str = Field(..., description="Name of the NIM model", examples=["gpt-4"])
 
+    status: NIMRunStatus = Field(
+        ...,
+        description="Status of the NIM run",
+        examples=["pending", "running", "completed", "error"],
+    )
+
     deployment_status: DeploymentStatus = Field(
         ..., description="Status of the NIM deployment", examples=["deployed"]
     )
 
+    runtime_seconds: float = Field(
+        ...,
+        description="Time taken for the NIM run in seconds",
+        examples=[300.5],
+        ge=0.0,
+    )
+
     evaluations: list[Evaluation] = Field(
-        ..., description="List of evaluations performed on this NIM"
+        default_factory=list, description="List of evaluations performed on this NIM"
     )
     customizations: list[Customization] = Field(
-        ..., description="List of customizations performed on this NIM"
+        default_factory=list, description="List of customizations performed on this NIM"
     )
 
     error: str | None = Field(
         None,
-        description="Error message if the NIM deployment failed",
-        examples=["NIM deployment failed: Timeout"],
+        description="Error message if the NIM failed",
+        examples=["NIM failed: Deployment timeout"],
     )
 
 
@@ -247,14 +332,15 @@ class LLMJudgeResponse(BaseModel):
     """Model representing a LLM Judge status"""
 
     model_name: str = Field(..., description="Name of the LLM Judge model", examples=["gpt-4"])
+    type: str = Field(..., description="Type of LLM Judge", examples=["remote", "local"])
 
     deployment_status: DeploymentStatus = Field(
         ..., description="Status of the LLM Judge deployment", examples=["deployed"]
     )
     error: str | None = Field(
         None,
-        description="Error message if the LLM Judge deployment failed",
-        examples=["LLM Judge deployment failed: Timeout"],
+        description="Error message if the LLM Judge failed",
+        examples=["LLM Judge failed: Connection timeout"],
     )
 
 
@@ -272,7 +358,7 @@ class JobDetailResponse(BaseModel):
     client_id: str = Field(
         ...,
         description="The unique identifier of the client to process",
-        example="client_123",
+        examples=["client_123"],
     )
     status: str = Field(
         ...,
@@ -294,7 +380,7 @@ class JobDetailResponse(BaseModel):
     )
     llm_judge: LLMJudgeResponse | None = Field(None, description="LLM Judge status for this job")
     nims: list[NIMResponse] = Field(
-        ..., description="List of NIMs and their evaluation results for this job"
+        default_factory=list, description="List of NIMs and their evaluation results for this job"
     )
     datasets: list[Dataset] = Field(
         default_factory=list, description="List of datasets used in this job"

@@ -14,7 +14,7 @@
 # limitations under the License.
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field
@@ -34,10 +34,18 @@ class DataSplitConfig(BaseModel):
     """Configuration for data split"""
 
     eval_size: int = Field(default=20, description="Size of evaluation set")
-    val_ratio: float = Field(default=0.1, description="Validation ratio")
+    val_ratio: float = Field(
+        default=0.1,
+        description="Validation ratio",
+        ge=0,
+        lt=1,
+    )
     min_total_records: int = Field(default=50, description="Minimum total records")
     random_seed: int | None = Field(None, description="Random seed")
     limit: int = Field(default=10000, description="Limit on number of records to evaluate")
+    parse_function_arguments: bool = Field(
+        default=True, description="Data Validation: Parse function arguments to JSON"
+    )
 
 
 class ICLConfig(BaseModel):
@@ -112,57 +120,66 @@ class NIMConfig(BaseModel):
         return self.model_name
 
 
-class LLMJudgeConfig(BaseModel):
-    type: str  # "remote" or "local"
+class LLMJudgeConfig(NIMConfig):
+    type: Literal["remote", "local"]
     # Remote fields
     url: str | None = None
-    model_id: str | None = None
     api_key_env: str | None = None
     api_key: str | None = None
-    # Local fields
+    context_length: int | None = None  # overwrite NIMConfig to be optional
     model_name: str | None = None
-    tag: str | None = None
-    context_length: int | None = None
-    gpus: int | None = None
-    pvc_size: str | None = None
-    registry_base: str | None = None
-    customization_enabled: bool = False
 
+    def __init__(self, *args, **kwargs):
+        super().__init__(
+            *args,
+            **kwargs,
+        )
+
+    @property
     def is_remote(self) -> bool:
         return self.type == "remote"
 
-    def is_local(self) -> bool:
-        return self.type == "local"
-
-    def get_remote_config(self) -> dict:
-        if not self.is_remote():
-            raise ValueError("Not a remote judge config")
-        return {
-            "api_endpoint": {
-                "url": self.url,
-                "model_id": self.model_id,
-                "api_key": self.api_key,
-            }
-        }
-
-    def get_local_nim_config(self) -> "NIMConfig":
-        if not self.is_local():
-            raise ValueError("Not a local judge config")
-        return NIMConfig(
-            model_name=self.model_name,
-            tag=self.tag,
-            context_length=self.context_length,
-            gpus=self.gpus,
-            pvc_size=self.pvc_size,
-            registry_base=self.registry_base or "nvcr.io/nim",
-            customization_enabled=self.customization_enabled,
+    @classmethod
+    def remote_config(cls, data: dict, api_key: str) -> "LLMJudgeConfig":
+        """Get configuration based on type"""
+        return cls(
+            url=data.get("url"),
+            type="remote",
+            model_name=data.get("model_name"),
+            api_key=api_key,
         )
 
     @classmethod
-    def from_yaml(cls, data: dict) -> "LLMJudgeConfig":
+    def local_config(cls, data: dict) -> "LLMJudgeConfig":
+        return cls(
+            model_name=data.get("model_name"),
+            type="local",
+            tag=data.get("tag"),
+            context_length=data.get("context_length"),
+            gpus=data.get("gpus"),
+            pvc_size=data.get("pvc_size"),
+            registry_base=data.get("registry_base") or "nvcr.io/nim",
+            customization_enabled=False,  # customization should be disabled for local LLM judge
+        )
+
+    def judge_model_config(self) -> dict[str, Any]:
+        if self.is_remote:
+            return {
+                "api_endpoint": {
+                    "url": self.url,
+                    "model_id": self.model_name,
+                    "api_key": self.api_key,
+                },
+            }
+        else:
+            return self.model_name
+
+    @classmethod
+    def from_json(cls, data: dict) -> "LLMJudgeConfig":
         api_key_env = data.get("api_key_env")
         api_key = os.environ.get(api_key_env) if api_key_env else None
-        return cls(**data, api_key=api_key)
+        is_remote = data.get("type") == "remote"
+        return cls.remote_config(data, api_key) if is_remote else cls.local_config(data)
 
 
 class Settings(BaseSettings):
@@ -198,16 +215,26 @@ class Settings(BaseSettings):
             config_data = yaml.safe_load(f)
             lora_config = LoRAConfig(**config_data["lora_config"])
             training_config = TrainingConfig(**config_data["training_config"], lora=lora_config)
-            llm_judge_config = LLMJudgeConfig.from_yaml(config_data["llm_judge_config"])
+            llm_judge_config = LLMJudgeConfig.from_json(config_data["llm_judge_config"])
             logging_config = (
                 LoggingConfig(**config_data.get("logging_config", {}))
                 if "logging_config" in config_data
                 else LoggingConfig()
             )
 
+            # Deduplicate NIMs by model_name
+            # we should have only unique NIMs in the config
+            # will pick up the first one if there are duplicates
+            seen_models = set()
+            unique_nims = []
+            for nim in config_data["nims"]:
+                if nim["model_name"] not in seen_models:
+                    unique_nims.append(nim)
+                    seen_models.add(nim["model_name"])
+
             return cls(
                 nmp_config=NMPConfig(**config_data["nmp_config"]),
-                nims=[NIMConfig(**nim) for nim in config_data["nims"]],
+                nims=[NIMConfig(**nim) for nim in unique_nims],
                 llm_judge_config=llm_judge_config,
                 training_config=training_config,
                 data_split_config=DataSplitConfig(**config_data["data_split_config"]),

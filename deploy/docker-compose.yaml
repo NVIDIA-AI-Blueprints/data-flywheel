@@ -1,7 +1,7 @@
 services:
 
   api:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-25.06}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -9,14 +9,15 @@ services:
     ports:
       - "8000:8000"
     environment:
-      - ELASTICSEARCH_URL=http://elasticsearch:9200
-      - REDIS_URL=redis://redis:6379/0
-      - MONGODB_URL=mongodb://mongodb:27017
+      - ELASTICSEARCH_URL=http://localhost:9200
+      - REDIS_URL=redis://localhost:6379/0
+      - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
       - NGC_API_KEY=${NGC_API_KEY}
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
     command: ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    network_mode: host
     restart: always
     depends_on:
       elasticsearch:
@@ -27,7 +28,7 @@ services:
         condition: service_started
 
   celery_worker:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-25.06}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -58,7 +59,7 @@ services:
 
 
   celery_parent_worker:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.1.0}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-25.06}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile

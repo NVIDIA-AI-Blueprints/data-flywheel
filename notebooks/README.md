@@ -36,54 +36,21 @@ Check out the following example notebooks to learn how to optimize LLMs using a 
 
 ## Prerequisites
 
-### Deploy NeMo Microservices
+### Hardware Requirement
 
-To follow this tutorial, you will need at least six A100/H100-80GB NVIDIA GPUs, which will be allocated as follows:
+To complete this tutorial, you'll need a system with atleast two A100 or H100 (80GB) NVIDIA GPUs, which will be used as follows:
 
-- **Fine-tuning:** At least one GPU for fine-tuning the `meta/llama-3.2-1B-instruct`, `meta/llama-3.2-3B-instruct` or `meta/llama-3.1-8B-instruct` model.
-- **Inference:** At least one GPU for deploying the corresponding NIM for evaluation.
-- **LLM-as-a-judge evaluation:** Four GPUs to deploy the `meta/llama-3.3-70B-instruct` NIM to serve as a judge LLM for evaluation tool calling responses.
+- **Fine-tuning:** At least one GPU is required for fine-tuning a model (e.g.`meta/llama-3.2-1B-instruct`, `meta/llama-3.2-3B-instruct` or `meta/llama-3.1-8B-instruct`).
+- **Inference:** At least one GPU is required for deploying the corresponding NIM for evaluation.
 
-Refer to the [platform prerequisites and installation guide](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html) to deploy NeMo Microservices.
+### Software Requirement
 
-> **Note**
->
-> At the time of deploying the microservices helm chart, you will need to update `demo-values.yaml` to include the models that should be part of the search space. Make this configuration in the `customizer` settings -
->
+You will deploy the [NVIDIA NeMo Microservices](https://docs.nvidia.com/nemo/microservices/latest/about/index.html) as part of this blueprint.
 
-```yaml
-customizer:
-  enabled: true
-  modelsStorage:
-    storageClassName: standard
-  customizerConfig:
-    models:
-      meta/llama-3.2-1b-instruct:
-        enabled: true
-      meta/llama-3.2-3b-instruct:
-        enabled: true
-      meta/llama-3.1-8b-instruct:
-        enabled: true
-        model_path: llama-3_1-8b-instruct
-        training_options:
-        - finetuning_type: lora
-          num_gpus: 1
-          training_type: sft
-    training:
-      pvc:
-        storageClass: "standard"
-        volumeAccessMode: "ReadWriteOnce"
-```
+First, please ensure your platform meets the [Requirements](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#requirements) before proceeding. The notebook uses a script to automate the remaining setup, including the minikube cluster and NeMo microservices deployment.
 
-Scale down the default deployment of `meta/llama-3.1-8b-instruct` NIM. Flywheel orchestrator will do all the necessary deployments on the user's behalf.
 
-```bash
-export NEMO_URL="http://nemo.test"
-
-curl -X DELETE "$NEMO_URL/v1/deployment/model-deployments/meta/llama-3.1-8b-instruct"
-```
-
-### Deploy Data Flywheel Blueprint
+### Get the Data Flywheel Blueprint
 
 1. Clone the blueprint repository:
 
@@ -98,48 +65,6 @@ curl -X DELETE "$NEMO_URL/v1/deployment/model-deployments/meta/llama-3.1-8b-inst
    ```sh
    uv sync --dev
    ```
-
-3. Configure Models for the Flywheel Orchestrator
-
-    In [config/config.yaml](../config/config.yaml), update the `nim` configuration to enable the following models for customization by flywheel orchestrator: 
-    * `meta/llama-3.2-1b-instruct`
-    * `meta/llama-3.2-3b-instruct`
-    * `meta/llama-3.1-8b-instruct`
-
-    ```yaml
-    nims:
-      - model_name: "meta/llama-3.2-1b-instruct"
-        context_length: 8192
-        gpus: 1
-        pvc_size: 25Gi
-        tag: "1.8.3"
-        customization_enabled: true
-
-
-      - model_name: "meta/llama-3.2-3b-instruct"  
-        context_length: 32768  
-        gpus: 1  
-        pvc_size: 25Gi  
-        tag: "1.8.3"  
-        customization_enabled: true
-
-
-      - model_name: "meta/llama-3.1-8b-instruct"  
-        context_length: 32768  
-        gpus: 1  
-        pvc_size: 25Gi  
-        tag: "1.8.3"  
-        customization_enabled: true
-    ```
-
-
-4. Spin up the Data Flywheel Orchestrator:
-
-   ```sh
-   ./scripts/run.sh
-   ```
-
-Once the services are all up, continue with the notebook.
 
 ### Access the Tutorial
 

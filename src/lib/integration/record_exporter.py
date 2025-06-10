@@ -2,10 +2,7 @@ import json
 
 from elasticsearch import Elasticsearch
 
-from src.config import settings
-from src.lib.flywheel.util import (
-    validate_records,
-)
+from src.config import DataSplitConfig
 from src.lib.integration.es_client import ES_COLLECTION_NAME, get_es_client
 from src.log_utils import setup_logging
 
@@ -18,7 +15,9 @@ class RecordExporter:
     def __init__(self):
         self.es_client = get_es_client()
 
-    def get_records(self, client_id: str, workload_id: str) -> list[dict]:
+    def get_records(
+        self, client_id: str, workload_id: str, split_config: DataSplitConfig
+    ) -> list[dict]:
         logger.info(f"Pulling data from Elasticsearch for workload {workload_id}")
         # Define the search query
         search_query = {
@@ -31,7 +30,7 @@ class RecordExporter:
                 }
             },
             "sort": [{"timestamp": {"order": "desc"}}],
-            "size": settings.data_split_config.limit,
+            "size": split_config.limit * 2,  # fetch more as some might get dropped in validation
         }
 
         # Execute the search query
@@ -63,7 +62,5 @@ class RecordExporter:
         records = list(unique_records.values())
 
         logger.info(f"Deduplicated down to {len(records)} records for workload {workload_id}")
-
-        validate_records(records, workload_id, settings.data_split_config)
 
         return records

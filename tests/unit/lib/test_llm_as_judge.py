@@ -1,15 +1,15 @@
 # SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
 # SPDX-License-Identifier: Apache-2.0
-"""Unit tests for ``Evaluator.spin_up_llm_judge``.
+"""Unit tests for ``LLMAsJudge.spin_up_llm_judge``.
 
-These tests ensure the Evaluator correctly orchestrates deployment of a *local*
+These tests ensure the LLMAsJudge correctly orchestrates deployment of a *local*
 LLM judge through the ``DMSClient``:
 
-1. When the model is **not yet deployed** the Evaluator should invoke
+1. When the model is **not yet deployed** the LLMAsJudge should invoke
    ``deploy_model``.
 2. When the model is **already deployed** ``deploy_model`` must *not* be
    called.
-3. If ``deploy_model`` raises an exception the Evaluator should propagate it
+3. If ``deploy_model`` raises an exception the LLMAsJudge should propagate it
    unchanged so that the hosting process can fail fast.
 """
 
@@ -17,7 +17,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from src.lib.nemo.evaluator import Evaluator
+from src.lib.nemo.llm_as_judge import LLMAsJudge
 
 # ---------------------------------------------------------------------------
 # Helper patch builders
@@ -56,10 +56,10 @@ def test_spin_up_llm_judge_deploys_when_not_deployed(monkeypatch):
 
     # Patch the DMSClient constructor inside the evaluator so every instantiation
     # returns our dummy instance
-    monkeypatch.setattr("src.lib.nemo.evaluator.DMSClient", lambda *_, **__: dummy_client)
+    monkeypatch.setattr("src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client)
 
     # Act
-    result = Evaluator().spin_up_llm_judge()
+    result = LLMAsJudge().spin_up_llm_judge()
 
     # Assert
     dummy_client.is_deployed.assert_called_once()
@@ -76,9 +76,9 @@ def test_spin_up_llm_judge_skips_when_already_deployed(monkeypatch):
     dummy_client.is_deployed.return_value = True
     dummy_client.deploy_model = MagicMock()
 
-    monkeypatch.setattr("src.lib.nemo.evaluator.DMSClient", lambda *_, **__: dummy_client)
+    monkeypatch.setattr("src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client)
 
-    result = Evaluator().spin_up_llm_judge()
+    result = LLMAsJudge().spin_up_llm_judge()
 
     dummy_client.is_deployed.assert_called_once()
     dummy_client.deploy_model.assert_not_called()
@@ -94,10 +94,10 @@ def test_spin_up_llm_judge_propagates_deployment_errors(monkeypatch):
     dummy_client.is_deployed.return_value = False
     dummy_client.deploy_model.side_effect = RuntimeError("boom")
 
-    monkeypatch.setattr("src.lib.nemo.evaluator.DMSClient", lambda *_, **__: dummy_client)
+    monkeypatch.setattr("src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client)
 
     with pytest.raises(RuntimeError, match="boom"):
-        Evaluator().spin_up_llm_judge()
+        LLMAsJudge().spin_up_llm_judge()
 
     dummy_client.is_deployed.assert_called_once()
     dummy_client.deploy_model.assert_called_once()
