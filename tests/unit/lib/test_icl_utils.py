@@ -56,7 +56,9 @@ class TestEstimateTokens:
             ("", 0, 0),
         ],
     )
-    def test_estimate_tokens_without_tiktoken(self, text, buffer_percent, expected_tokens):
+    def test_estimate_tokens_without_tiktoken(
+        self, text, buffer_percent, expected_tokens
+    ):
         result = estimate_tokens(text, buffer_percent=buffer_percent)
         assert result == expected_tokens
 
@@ -140,21 +142,32 @@ class TestGenerateICLRecords:
     def test_generate_icl_records_context_limit(self, get_record_by_name):
         system_record = get_record_by_name("with_system_message")
         workload_type = identify_workload_type([system_record])
-        small_config = ICLConfig(max_context_length=100, reserved_tokens=50, max_examples=5)
-        selected_examples = select_icl_examples([system_record], small_config, workload_type)
+        small_config = ICLConfig(
+            max_context_length=100, reserved_tokens=50, max_examples=5
+        )
+        selected_examples = select_icl_examples(
+            [system_record], small_config, workload_type
+        )
         result = generate_icl_records([system_record], small_config, selected_examples)
 
         for record in result:
             if record["request"]["messages"][0]["role"] == "system":
                 system_content = record["request"]["messages"][0]["content"]
-                if "You are a helpful assistant." in system_content and len(system_content) < 50:
+                if (
+                    "You are a helpful assistant." in system_content
+                    and len(system_content) < 50
+                ):
                     assert "For example" not in system_content
 
     def test_generate_icl_records_oversized_record(self, oversized_record):
         tiny_config = ICLConfig(max_context_length=100, reserved_tokens=50)
         workload_type = identify_workload_type([oversized_record])
-        selected_examples = select_icl_examples([oversized_record], tiny_config, workload_type)
-        result = generate_icl_records([oversized_record], tiny_config, selected_examples)
+        selected_examples = select_icl_examples(
+            [oversized_record], tiny_config, workload_type
+        )
+        result = generate_icl_records(
+            [oversized_record], tiny_config, selected_examples
+        )
 
         assert len(result) == 1
         assert len(result[0]["request"]["messages"]) == 1
@@ -168,9 +181,13 @@ class TestGenerateICLRecords:
 
             mock_estimate.side_effect = mock_token_count
 
-            config = ICLConfig(max_context_length=1100, reserved_tokens=50, min_examples=2)
+            config = ICLConfig(
+                max_context_length=1100, reserved_tokens=50, min_examples=2
+            )
             workload_type = identify_workload_type(sample_records)
-            selected_examples = select_icl_examples(sample_records, config, workload_type)
+            selected_examples = select_icl_examples(
+                sample_records, config, workload_type
+            )
             result = generate_icl_records(sample_records, config, selected_examples)
 
             system_content = result[0]["request"]["messages"][0]["content"]

@@ -50,7 +50,8 @@ def sample_records():
     records_data = load_json_fixture("chat_completion.json")
     # Convert the loaded data to the expected Record format
     return [
-        {"request": record["request"], "response": record["response"]} for record in records_data
+        {"request": record["request"], "response": record["response"]}
+        for record in records_data
     ]
 
 
@@ -83,7 +84,9 @@ def oversized_record():
     """
     return {
         "request": {
-            "messages": [{"role": "user", "content": "This is a very large message " * 1000}]
+            "messages": [
+                {"role": "user", "content": "This is a very large message " * 1000}
+            ]
         },
         "response": {
             "choices": [

@@ -60,7 +60,9 @@ def validate_path(
 
         # Check if the path is within the project directory
         if not abs_path.startswith(project_root):
-            raise ValueError(f"Path must be within the project directory: {project_root}")
+            raise ValueError(
+                f"Path must be within the project directory: {project_root}"
+            )
 
         if is_input:
             # For input files, check that they exist

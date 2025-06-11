@@ -65,7 +65,9 @@ class LLMAsJudge:
         model_name = self.config.model_name
 
         if not url or not model_name:
-            raise RuntimeError("Remote LLM judge configuration is missing 'url' or 'model_name'.")
+            raise RuntimeError(
+                "Remote LLM judge configuration is missing 'url' or 'model_name'."
+            )
 
         headers = {"Content-Type": "application/json"}
         # Optional API key support - many internal endpoints don't need it, but
@@ -93,7 +95,9 @@ class LLMAsJudge:
             return True
 
         except Exception:
-            logger.exception("Unable to reach remote LLM judge - aborting worker startup.")
+            logger.exception(
+                "Unable to reach remote LLM judge - aborting worker startup."
+            )
             # Re-raise to fail fast (Celery worker will exit)
             return False
 
@@ -109,7 +113,8 @@ def validate_llm_judge():
     llm_judge_available = llm_as_judge.validate_llm_judge_availability()
 
     if not llm_judge_available:
-        logger.error("""
+        logger.error(
+            """
         **************************************************
         *                                                *
         *  Remote Evaluator LLM judge is not available!  *
@@ -119,7 +124,8 @@ def validate_llm_judge():
         *  Exiting                                       *
         *                                                *
         **************************************************
-        """)
+        """
+        )
         sys.exit(1)
 
     logger.info("LLM judge is available!")

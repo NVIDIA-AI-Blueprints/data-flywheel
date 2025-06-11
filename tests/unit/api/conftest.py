@@ -299,21 +299,27 @@ def tweak_settings(monkeypatch):
     """Provide deterministic test configuration via the global `settings`."""
 
     # --- Data-split parameters (fields are *not* frozen) --------------------
-    monkeypatch.setattr(settings.data_split_config, "min_total_records", 1, raising=False)
+    monkeypatch.setattr(
+        settings.data_split_config, "min_total_records", 1, raising=False
+    )
     monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
     monkeypatch.setattr(settings.data_split_config, "eval_size", 1, raising=False)
     monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
     monkeypatch.setattr(settings.data_split_config, "limit", 100, raising=False)
 
     # --- NMP namespace (field *is* frozen, so create a new object) ----------
-    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    new_nmp_cfg = settings.nmp_config.model_copy(
+        update={"nmp_namespace": "test-namespace"}
+    )
     monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
 
     # --- LLM Judge config (field *is* frozen, so create a new object) ----------
     remote_llm_judge_cfg = settings.llm_judge_config.model_copy(
         update={"type": "remote", "url": "http://test-llm-judge.com"}
     )
-    monkeypatch.setattr(settings, "llm_judge_config", remote_llm_judge_cfg, raising=True)
+    monkeypatch.setattr(
+        settings, "llm_judge_config", remote_llm_judge_cfg, raising=True
+    )
 
     yield
 

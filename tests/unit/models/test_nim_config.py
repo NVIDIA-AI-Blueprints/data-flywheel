@@ -102,7 +102,9 @@ def test_nim_config_to_dms_config():
     assert dms_config["name"] == "test-model"  # Slash replaced with dash
     assert dms_config["namespace"] == "dfwbp"
     assert dms_config["config"]["model"] == "test/model"
-    assert dms_config["config"]["nim_deployment"]["image_name"] == "nvcr.io/nim/test/model"
+    assert (
+        dms_config["config"]["nim_deployment"]["image_name"] == "nvcr.io/nim/test/model"
+    )
     assert dms_config["config"]["nim_deployment"]["image_tag"] == "latest"
     assert dms_config["config"]["nim_deployment"]["pvc_size"] == "10Gi"
     assert dms_config["config"]["nim_deployment"]["gpu"] == 1
@@ -123,7 +125,8 @@ def test_nim_config_to_dms_config():
     assert dms_config["namespace"] == "dfwbp"
     assert dms_config["config"]["model"] == "test/model"
     assert (
-        dms_config["config"]["nim_deployment"]["image_name"] == "custom.registry.io/nim/test/model"
+        dms_config["config"]["nim_deployment"]["image_name"]
+        == "custom.registry.io/nim/test/model"
     )
     assert dms_config["config"]["nim_deployment"]["image_tag"] == "latest"
     assert dms_config["config"]["nim_deployment"]["pvc_size"] == "10Gi"

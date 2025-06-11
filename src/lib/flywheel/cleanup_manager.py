@@ -52,7 +52,9 @@ class CleanupManager:
         """Find all NIMs with RUNNING or PENDING deployment status for a flywheel run."""
         running_nims = self.db_manager.find_running_nims_for_flywheel(flywheel_run_id)
 
-        logger.info(f"Found {len(running_nims)} running NIMs for flywheel run {flywheel_run_id}")
+        logger.info(
+            f"Found {len(running_nims)} running NIMs for flywheel run {flywheel_run_id}"
+        )
         return running_nims
 
     def find_customization_jobs(self, nim_id: ObjectId) -> list[dict[str, Any]]:
@@ -78,7 +80,9 @@ class CleanupManager:
             if "job_id" in customization:
                 try:
                     self.customizer.cancel_job(customization["job_id"])
-                    logger.info(f"Cancelled customization job {customization['job_id']}")
+                    logger.info(
+                        f"Cancelled customization job {customization['job_id']}"
+                    )
                 except Exception as e:
                     error_msg = f"Failed to cancel customization job {customization['job_id']}: {e}"
                     logger.warning(error_msg)
@@ -119,7 +123,9 @@ class CleanupManager:
 
             dms_client = DMSClient(nmp_config=settings.nmp_config, nim=llm_judge_config)
             dms_client.shutdown_deployment()
-            logger.info(f"Shutdown LLM judge deployment for {llm_judge_config.model_name}")
+            logger.info(
+                f"Shutdown LLM judge deployment for {llm_judge_config.model_name}"
+            )
         except Exception as e:
             error_msg = f"Failed to shutdown LLM judge: {e}"
             logger.warning(error_msg)
@@ -145,7 +151,9 @@ class CleanupManager:
                 flywheel_run_id, error_msg="Cancelled by cleanup manager"
             )
 
-            logger.info(f"Marked all resources as cancelled for flywheel run {flywheel_run_id}")
+            logger.info(
+                f"Marked all resources as cancelled for flywheel run {flywheel_run_id}"
+            )
 
         except Exception as e:
             error_msg = f"Failed to mark resources as cancelled: {e}"
@@ -203,7 +211,9 @@ class CleanupManager:
 
             # Report results
             if self.cleanup_errors:
-                logger.warning(f"Cleanup completed with {len(self.cleanup_errors)} errors:")
+                logger.warning(
+                    f"Cleanup completed with {len(self.cleanup_errors)} errors:"
+                )
                 for error in self.cleanup_errors:
                     logger.warning(f"  - {error}")
             else:

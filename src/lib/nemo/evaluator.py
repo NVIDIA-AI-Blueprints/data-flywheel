@@ -135,7 +135,9 @@ class Evaluator:
         self, dataset_name: str, test_file: str, limit: int | None = None
     ) -> dict[str, Any]:
         """Create dataset configuration with optional limit parameter."""
-        dataset_config = {"files_url": f"hf://datasets/{self.namespace}/{dataset_name}/{test_file}"}
+        dataset_config = {
+            "files_url": f"hf://datasets/{self.namespace}/{dataset_name}/{test_file}"
+        }
         if limit is not None:
             dataset_config["limit"] = limit
         return dataset_config
@@ -159,7 +161,9 @@ class Evaluator:
             "tasks": {
                 "llm-as-judge": {
                     "type": "chat-completion",
-                    "dataset": self._create_dataset_config(dataset_name, test_file, limit),
+                    "dataset": self._create_dataset_config(
+                        dataset_name, test_file, limit
+                    ),
                     "params": self.get_template(tool_call=True),
                     "metrics": self.get_tool_judge_metrics(),
                 }
@@ -181,7 +185,10 @@ class Evaluator:
                     "model": self.judge_model_config,
                     "template": {
                         "messages": [
-                            {"role": "system", "content": TOOL_CALLING_JUDGE_SYSTEM_PROMPT},
+                            {
+                                "role": "system",
+                                "content": TOOL_CALLING_JUDGE_SYSTEM_PROMPT,
+                            },
                             {"role": "user", "content": TOOL_CALLING_JUDGE_PROMPT},
                         ]
                     },
@@ -232,7 +239,9 @@ class Evaluator:
             "tasks": {
                 "llm-as-judge": {
                     "type": "chat-completion",
-                    "dataset": self._create_dataset_config(dataset_name, test_file, limit),
+                    "dataset": self._create_dataset_config(
+                        dataset_name, test_file, limit
+                    ),
                     "params": self.get_template(),
                     "metrics": self.get_judge_metrics(),
                 }
@@ -247,7 +256,10 @@ class Evaluator:
                     "model": self.judge_model_config,
                     "template": {
                         "messages": [
-                            {"role": "system", "content": TOOL_CALLING_JUDGE_SYSTEM_PROMPT},
+                            {
+                                "role": "system",
+                                "content": TOOL_CALLING_JUDGE_SYSTEM_PROMPT,
+                            },
                             {"role": "user", "content": TOOL_CALLING_JUDGE_PROMPT},
                         ]
                     },
@@ -280,7 +292,9 @@ class Evaluator:
             "tasks": {
                 "custom-tool-calling": {
                     "type": "chat-completion",
-                    "dataset": self._create_dataset_config(dataset_name, test_file, limit),
+                    "dataset": self._create_dataset_config(
+                        dataset_name, test_file, limit
+                    ),
                     "params": self.get_template(tool_call=True),
                     "metrics": self.get_tool_calling_metrics(),
                 },
@@ -386,7 +400,9 @@ class Evaluator:
                     progress_callback({"progress": 0.0})
 
             else:
-                error_message = f"Job status: {status} / {job_data.get('status_details', {})}"
+                error_message = (
+                    f"Job status: {status} / {job_data.get('status_details', {})}"
+                )
                 if progress_callback:
                     progress_callback({"progress": 0.0, "error": error_message})
                 logger.warning(error_message)
@@ -455,7 +471,9 @@ class Evaluator:
         """
         if workload_type == WorkloadClassification.TOOL_CALLING:
             if tool_eval_type is None:
-                raise ValueError("tool_eval_type must be provided for tool calling workload")
+                raise ValueError(
+                    "tool_eval_type must be provided for tool calling workload"
+                )
 
             if tool_eval_type == ToolEvalType.TOOL_CALLING_METRIC:
                 config = self.get_tool_calling_config(
@@ -475,7 +493,10 @@ class Evaluator:
             json={"config": config, "target": {"type": "model", "model": target_model}},
         )
 
-        assert res.status_code in (200, 201), f"Failed to launch evaluation job: {res.text}"
+        assert res.status_code in (
+            200,
+            201,
+        ), f"Failed to launch evaluation job: {res.text}"
         return res.json()["id"]
 
     def delete_evaluation_job(self, job_id: str) -> None:

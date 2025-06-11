@@ -139,7 +139,11 @@ class TaskResult(BaseModel):
         else:
             # Update all fields
             for key, value in locals().items():
-                if key not in ["self"] and hasattr(self.customization, key) and value is not None:
+                if (
+                    key not in ["self"]
+                    and hasattr(self.customization, key)
+                    and value is not None
+                ):
                     setattr(self.customization, key, value)
 
     def get_customization_progress(self) -> dict[str, Any]:
@@ -215,7 +219,9 @@ class NIMCustomization(BaseModel):
     job_id: str | None = None
     workload_id: str
     base_model: str
-    customized_model: str | None = None  # Make this optional since it's set after job starts
+    customized_model: str | None = (
+        None  # Make this optional since it's set after job starts
+    )
     started_at: datetime
     finished_at: datetime | None = None
     runtime_seconds: float = 0.0

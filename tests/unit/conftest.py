@@ -93,14 +93,18 @@ def tweak_settings(monkeypatch):
     """Provide deterministic test configuration via the global `settings`."""
 
     # --- Data-split parameters (fields are *not* frozen) --------------------
-    monkeypatch.setattr(settings.data_split_config, "min_total_records", 1, raising=False)
+    monkeypatch.setattr(
+        settings.data_split_config, "min_total_records", 1, raising=False
+    )
     monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
     monkeypatch.setattr(settings.data_split_config, "eval_size", 1, raising=False)
     monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
     monkeypatch.setattr(settings.data_split_config, "limit", 100, raising=False)
 
     # --- NMP namespace (field *is* frozen, so create a new object) ----------
-    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    new_nmp_cfg = settings.nmp_config.model_copy(
+        update={"nmp_namespace": "test-namespace"}
+    )
     monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
 
     yield
@@ -115,7 +119,9 @@ def mock_data_uploader():
         # plain string.  A raw ``MagicMock`` instance cannot be encoded by BSON and
         # causes an ``InvalidDocument`` error when the code under test attempts to
         # update MongoDB.
-        mock_instance.get_file_uri.return_value = "nmp://test-namespace/datasets/dummy.jsonl"
+        mock_instance.get_file_uri.return_value = (
+            "nmp://test-namespace/datasets/dummy.jsonl"
+        )
         mock.return_value = mock_instance
         yield mock_instance
 
@@ -154,8 +160,18 @@ def workflow_setup():
     """Setup fixture for workflow initialization tests"""
     return {
         "nims_config": [
-            {"model_name": "model_1", "deployment_type": "local", "gpus": 1, "tag": "latest"},
-            {"model_name": "model_2", "deployment_type": "local", "gpus": 1, "tag": "latest"},
+            {
+                "model_name": "model_1",
+                "deployment_type": "local",
+                "gpus": 1,
+                "tag": "latest",
+            },
+            {
+                "model_name": "model_2",
+                "deployment_type": "local",
+                "gpus": 1,
+                "tag": "latest",
+            },
         ],
         "llm_judge_config": {
             "type": "remote",
@@ -203,7 +219,9 @@ def sample_es_data():
                                 {"role": "assistant", "content": f"Answer {i}"},
                             ]
                         },
-                        "response": {"choices": [{"message": {"content": f"Response {i}"}}]},
+                        "response": {
+                            "choices": [{"message": {"content": f"Response {i}"}}]
+                        },
                     }
                 }
                 for i in range(30)
@@ -418,7 +436,9 @@ def valid_openai_record():
 def openai_record_with_tool_calls():
     """OpenAI record with tool calls."""
     return {
-        "request": {"messages": [{"role": "user", "content": "What's the weather in New York?"}]},
+        "request": {
+            "messages": [{"role": "user", "content": "What's the weather in New York?"}]
+        },
         "response": {
             "choices": [
                 {
@@ -461,7 +481,9 @@ def openai_records_batch():
                 ]
             },
             "response": {
-                "choices": [{"message": {"content": "Why did the chicken cross the road?"}}]
+                "choices": [
+                    {"message": {"content": "Why did the chicken cross the road?"}}
+                ]
             },
         },
         # Multi-turn conversation

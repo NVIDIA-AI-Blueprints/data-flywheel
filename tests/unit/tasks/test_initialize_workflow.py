@@ -116,7 +116,9 @@ class TestInitializeWorkflow(unittest.TestCase):
     @patch("src.tasks.tasks.LLMAsJudge")
     @patch("src.tasks.tasks.db_manager")
     @patch("src.tasks.tasks.settings")
-    def test_parameter_population_success(self, mock_settings, mock_db_manager, mock_llm_as_judge):
+    def test_parameter_population_success(
+        self, mock_settings, mock_db_manager, mock_llm_as_judge
+    ):
         """Test that initialize_workflow properly populates parameters in TaskResult."""
         mock_llm_as_judge.return_value.config = self.mock_llm_judge_config_local
         mock_settings.nims = self.single_nim_config
@@ -169,7 +171,9 @@ class TestInitializeWorkflow(unittest.TestCase):
     @patch("src.tasks.tasks.LLMAsJudge")
     @patch("src.tasks.tasks.db_manager")
     @patch("src.tasks.tasks.settings")
-    def test_local_judge_configuration(self, mock_settings, mock_db_manager, mock_llm_as_judge):
+    def test_local_judge_configuration(
+        self, mock_settings, mock_db_manager, mock_llm_as_judge
+    ):
         """Test with local judge configuration (no outbound request)."""
         mock_llm_as_judge.return_value.config = self.mock_llm_judge_config_local
         mock_settings.nims = self.single_nim_config

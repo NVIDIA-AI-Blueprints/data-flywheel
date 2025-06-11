@@ -139,7 +139,9 @@ def initialize_workflow(
         model_name=llm_as_judge_cfg.model_name,
         type=llm_as_judge_cfg.type,
         deployment_status=(
-            DeploymentStatus.READY if llm_as_judge_cfg.is_remote else DeploymentStatus.CREATED
+            DeploymentStatus.READY
+            if llm_as_judge_cfg.is_remote
+            else DeploymentStatus.CREATED
         ),
     )
 
@@ -241,9 +243,13 @@ def create_datasets(previous_result: TaskResult) -> TaskResult:
         )
         # Update all the NIM runs to error
         status = (
-            NIMRunStatus.CANCELLED if isinstance(e, FlywheelCancelledError) else NIMRunStatus.FAILED
+            NIMRunStatus.CANCELLED
+            if isinstance(e, FlywheelCancelledError)
+            else NIMRunStatus.FAILED
         )
-        db_manager.mark_all_nims_status(previous_result.flywheel_run_id, status, error_msg=str(e))
+        db_manager.mark_all_nims_status(
+            previous_result.flywheel_run_id, status, error_msg=str(e)
+        )
         # Return a TaskResult so that downstream tasks can gracefully short-circuit
         raise e
 
@@ -261,7 +267,9 @@ def wait_for_llm_as_judge(previous_result: TaskResult) -> TaskResult:
     assert isinstance(previous_result, TaskResult)
 
     llm_as_judge_cfg = previous_result.llm_judge_config
-    llm_judge_run = LLMJudgeRun(**db_manager.find_llm_judge_run(previous_result.flywheel_run_id))
+    llm_judge_run = LLMJudgeRun(
+        **db_manager.find_llm_judge_run(previous_result.flywheel_run_id)
+    )
 
     if llm_as_judge_cfg.is_remote:
         logger.info("Remote LLM Judge will be used")
@@ -273,7 +281,9 @@ def wait_for_llm_as_judge(previous_result: TaskResult) -> TaskResult:
         _check_cancellation(previous_result.flywheel_run_id, raise_error=True)
 
         # Update LLM judge deployment status to pending
-        db_manager.update_llm_judge_deployment_status(llm_judge_run.id, DeploymentStatus.PENDING)
+        db_manager.update_llm_judge_deployment_status(
+            llm_judge_run.id, DeploymentStatus.PENDING
+        )
 
         dms_client = DMSClient(nmp_config=settings.nmp_config, nim=llm_as_judge_cfg)
 
@@ -307,9 +317,13 @@ def wait_for_llm_as_judge(previous_result: TaskResult) -> TaskResult:
         )
         # Update all the NIM runs to error
         status = (
-            NIMRunStatus.CANCELLED if isinstance(e, FlywheelCancelledError) else NIMRunStatus.FAILED
+            NIMRunStatus.CANCELLED
+            if isinstance(e, FlywheelCancelledError)
+            else NIMRunStatus.FAILED
         )
-        db_manager.mark_all_nims_status(previous_result.flywheel_run_id, status, error_msg=str(e))
+        db_manager.mark_all_nims_status(
+            previous_result.flywheel_run_id, status, error_msg=str(e)
+        )
         raise ValueError(error_msg) from e
     return previous_result
 
@@ -417,7 +431,9 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
         try:
             dms_client.shutdown_deployment()
         except Exception as dms_client_err:
-            logger.error(f"Error shutting down NIM {nim_config.model_name}: {dms_client_err!s}")
+            logger.error(
+                f"Error shutting down NIM {nim_config.model_name}: {dms_client_err!s}"
+            )
         # Persist error on NIM run and mark the NIM run as cancelled if the error is due to cancellation.
         if isinstance(e, FlywheelCancelledError):
             db_manager.mark_nim_cancelled(
@@ -477,7 +493,9 @@ def run_generic_eval(
 
     tool_eval_types = [None]
     if previous_result.workload_type == WorkloadClassification.TOOL_CALLING:
-        tool_eval_types = [ToolEvalType.TOOL_CALLING_METRIC]  # , ToolEvalType.TOOL_CALLING_JUDGE]
+        tool_eval_types = [
+            ToolEvalType.TOOL_CALLING_METRIC
+        ]  # , ToolEvalType.TOOL_CALLING_JUDGE]
 
     jobs: list[dict[str, Any]] = []
 
@@ -512,7 +530,9 @@ def run_generic_eval(
             def callback(update_data):
                 """Update evaluation document with progress"""
                 current_time = datetime.utcnow()
-                update_data["runtime_seconds"] = (current_time - start_time).total_seconds()
+                update_data["runtime_seconds"] = (
+                    current_time - start_time
+                ).total_seconds()
                 manager.update_evaluation(eval_instance.id, update_data)
 
             return callback
@@ -589,23 +609,27 @@ def run_generic_eval(
             scores: dict[str, float] = {}
             if previous_result.workload_type == WorkloadClassification.TOOL_CALLING:
                 if results["tasks"]["custom-tool-calling"]:
-                    scores["function_name"] = results["tasks"]["custom-tool-calling"]["metrics"][
-                        "tool-calling-accuracy"
-                    ]["scores"]["function_name_accuracy"]["value"]
+                    scores["function_name"] = results["tasks"]["custom-tool-calling"][
+                        "metrics"
+                    ]["tool-calling-accuracy"]["scores"]["function_name_accuracy"][
+                        "value"
+                    ]
                     scores["function_name_and_args_accuracy"] = results["tasks"][
                         "custom-tool-calling"
                     ]["metrics"]["tool-calling-accuracy"]["scores"][
                         "function_name_and_args_accuracy"
-                    ]["value"]
+                    ][
+                        "value"
+                    ]
 
                 if results["tasks"]["custom-tool-calling"]["metrics"]["correctness"]:
-                    scores["tool_calling_correctness"] = results["tasks"]["custom-tool-calling"][
-                        "metrics"
-                    ]["correctness"]["scores"]["rating"]["value"]
+                    scores["tool_calling_correctness"] = results["tasks"][
+                        "custom-tool-calling"
+                    ]["metrics"]["correctness"]["scores"]["rating"]["value"]
             else:
-                scores["similarity"] = results["tasks"]["llm-as-judge"]["metrics"]["llm-judge"][
-                    "scores"
-                ]["similarity"]["value"]
+                scores["similarity"] = results["tasks"]["llm-as-judge"]["metrics"][
+                    "llm-judge"
+                ]["scores"]["similarity"]["value"]
 
             job["progress_callback"](
                 {
@@ -809,7 +833,10 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
             return previous_result
 
         # if there is no customized model, we will skip the customization evaluation.
-        if not previous_result.customization or not previous_result.customization.model_name:
+        if (
+            not previous_result.customization
+            or not previous_result.customization.model_name
+        ):
             msg = "No customized model available for evaluation"
             logger.error(msg)
             raise ValueError(msg)
@@ -832,7 +859,9 @@ def run_customization_eval(previous_result: TaskResult) -> TaskResult:
         )
 
         # Run the evaluation for the customized model.
-        next_result = run_generic_eval(previous_result, EvalType.CUSTOMIZED, DatasetType.BASE)
+        next_result = run_generic_eval(
+            previous_result, EvalType.CUSTOMIZED, DatasetType.BASE
+        )
 
         return next_result
     except Exception as e:
@@ -867,20 +896,25 @@ def shutdown_deployment(previous_results: list[TaskResult] | TaskResult) -> Task
                 previous_result.nim.model_name,
             )
             if nim_run_doc:
-                if _check_cancellation(previous_result.flywheel_run_id, raise_error=False):
+                if _check_cancellation(
+                    previous_result.flywheel_run_id, raise_error=False
+                ):
                     db_manager.mark_nim_cancelled(
                         nim_run_doc["_id"],
                         error_msg="Flywheel run cancelled",
                     )
                 else:
-                    db_manager.mark_nim_completed(nim_run_doc["_id"], nim_run_doc["started_at"])
+                    db_manager.mark_nim_completed(
+                        nim_run_doc["_id"], nim_run_doc["started_at"]
+                    )
         except Exception as update_err:
             logger.error("Failed to update NIM run status to COMPLETED: %s", update_err)
 
         if (
             previous_result.llm_judge_config
             and not previous_result.llm_judge_config.is_remote
-            and previous_result.llm_judge_config.model_name == previous_result.nim.model_name
+            and previous_result.llm_judge_config.model_name
+            == previous_result.nim.model_name
         ):
             logger.info(
                 f"Skip shutting down NIM {previous_result.nim.model_name} as it is the same as the LLM Judge"
@@ -922,7 +956,9 @@ def shutdown_deployment(previous_results: list[TaskResult] | TaskResult) -> Task
 
 
 @celery_app.task(name="tasks.finalize_flywheel_run", pydantic=True)
-def finalize_flywheel_run(previous_results: list[TaskResult] | TaskResult) -> TaskResult:
+def finalize_flywheel_run(
+    previous_results: list[TaskResult] | TaskResult,
+) -> TaskResult:
     """Finalize the Flywheel run by setting its ``finished_at`` timestamp.
     This is the final step of the workflow.
     It will mark the flywheel run as completed and update the flywheel run document with the finished_at timestamp.
@@ -949,7 +985,9 @@ def finalize_flywheel_run(previous_results: list[TaskResult] | TaskResult) -> Ta
 
         # This will mark the flywheel run as completed and update the flywheel run document with the finished_at timestamp.
         # this will update only if there is no error recorded on the flywheel run document.
-        db_manager.mark_flywheel_run_completed(previous_result.flywheel_run_id, datetime.utcnow())
+        db_manager.mark_flywheel_run_completed(
+            previous_result.flywheel_run_id, datetime.utcnow()
+        )
 
         logger.info(
             "Flywheel run %s marked as finished at %s",

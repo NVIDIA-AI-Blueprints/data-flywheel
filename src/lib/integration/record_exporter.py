@@ -30,7 +30,8 @@ class RecordExporter:
                 }
             },
             "sort": [{"timestamp": {"order": "desc"}}],
-            "size": split_config.limit * 2,  # fetch more as some might get dropped in validation
+            "size": split_config.limit
+            * 2,  # fetch more as some might get dropped in validation
         }
 
         # Execute the search query
@@ -52,8 +53,12 @@ class RecordExporter:
         unique_records = {}
         for record in records:
             # Convert dictionaries to JSON strings for hashing
-            messages_str = json.dumps(record.get("request", {}).get("messages", []), sort_keys=True)
-            choices_str = json.dumps(record.get("response", {}).get("choices", []), sort_keys=True)
+            messages_str = json.dumps(
+                record.get("request", {}).get("messages", []), sort_keys=True
+            )
+            choices_str = json.dumps(
+                record.get("response", {}).get("choices", []), sort_keys=True
+            )
             key = (messages_str, choices_str)
             if key not in unique_records:
                 unique_records[key] = record
@@ -61,6 +66,8 @@ class RecordExporter:
         # Update records with deduplicated records
         records = list(unique_records.values())
 
-        logger.info(f"Deduplicated down to {len(records)} records for workload {workload_id}")
+        logger.info(
+            f"Deduplicated down to {len(records)} records for workload {workload_id}"
+        )
 
         return records

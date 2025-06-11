@@ -50,7 +50,9 @@ class TestOpenAIFormatValidator:
                             {"role": "user", "content": "How are you?"},
                         ]
                     },
-                    "response": {"choices": [{"message": {"content": "I'm doing well!"}}]},
+                    "response": {
+                        "choices": [{"message": {"content": "I'm doing well!"}}]
+                    },
                 },
                 True,
             ),
@@ -167,7 +169,9 @@ class TestOpenAIFormatValidator:
             # Has tool_calls in message - quality check Passes
             (
                 {
-                    "request": {"messages": [{"role": "user", "content": "Get weather"}]},
+                    "request": {
+                        "messages": [{"role": "user", "content": "Get weather"}]
+                    },
                     "response": {
                         "choices": [
                             {
@@ -193,7 +197,9 @@ class TestOpenAIFormatValidator:
             # Has finish_reason as tool_calls - quality check passes
             (
                 {
-                    "request": {"messages": [{"role": "user", "content": "Get weather"}]},
+                    "request": {
+                        "messages": [{"role": "user", "content": "Get weather"}]
+                    },
                     "response": {
                         "choices": [
                             {
@@ -209,7 +215,9 @@ class TestOpenAIFormatValidator:
             (
                 {
                     "request": {"messages": [{"role": "user", "content": "Hello"}]},
-                    "response": {"choices": [{"message": {"content": "Hi!", "tool_calls": []}}]},
+                    "response": {
+                        "choices": [{"message": {"content": "Hi!", "tool_calls": []}}]
+                    },
                 },
                 False,
             ),
@@ -217,21 +225,27 @@ class TestOpenAIFormatValidator:
             (
                 {
                     "request": {"messages": [{"role": "user", "content": "Hello"}]},
-                    "response": {"choices": [{"message": {"content": "Hi!", "tool_calls": None}}]},
+                    "response": {
+                        "choices": [{"message": {"content": "Hi!", "tool_calls": None}}]
+                    },
                 },
                 False,
             ),
             # Multiple choices, one with tool calls - quality check passes
             (
                 {
-                    "request": {"messages": [{"role": "user", "content": "Get weather"}]},
+                    "request": {
+                        "messages": [{"role": "user", "content": "Get weather"}]
+                    },
                     "response": {
                         "choices": [
                             {"message": {"content": "Hi!"}},
                             {
                                 "message": {
                                     "content": "Checking...",
-                                    "tool_calls": [{"function": {"name": "get_weather"}}],
+                                    "tool_calls": [
+                                        {"function": {"name": "get_weather"}}
+                                    ],
                                 }
                             },
                         ]
@@ -268,7 +282,13 @@ class TestOpenAIFormatValidator:
                 {
                     "response": {
                         "choices": [
-                            {"message": {"tool_calls": [{"function": {"name": "get_weather"}}]}}
+                            {
+                                "message": {
+                                    "tool_calls": [
+                                        {"function": {"name": "get_weather"}}
+                                    ]
+                                }
+                            }
                         ]
                     },
                 },
@@ -344,7 +364,10 @@ class TestOpenAIFormatValidator:
                                 {
                                     "function": {
                                         "name": "get_weather",
-                                        "arguments": {"location": "NYC", "unit": "fahrenheit"},
+                                        "arguments": {
+                                            "location": "NYC",
+                                            "unit": "fahrenheit",
+                                        },
                                     }
                                 }
                             ]
@@ -354,14 +377,16 @@ class TestOpenAIFormatValidator:
             }
         }
 
-        original_args = record["response"]["choices"][0]["message"]["tool_calls"][0]["function"][
-            "arguments"
-        ]
+        original_args = record["response"]["choices"][0]["message"]["tool_calls"][0][
+            "function"
+        ]["arguments"]
         validator._parse_function_arguments_to_json(record)
 
         # Arguments should remain unchanged
         assert (
-            record["response"]["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+            record["response"]["choices"][0]["message"]["tool_calls"][0]["function"][
+                "arguments"
+            ]
             == original_args
         )
 
@@ -391,7 +416,9 @@ class TestOpenAIFormatValidator:
 
         # Should log warning for invalid JSON
         mock_logger.warning.assert_called_once()
-        assert "Failed to parse function arguments" in mock_logger.warning.call_args[0][0]
+        assert (
+            "Failed to parse function arguments" in mock_logger.warning.call_args[0][0]
+        )
 
     def test_parse_function_arguments_edge_cases(self, validator):
         """Test edge cases for parsing function arguments."""
@@ -413,7 +440,11 @@ class TestOpenAIFormatValidator:
 
         # No arguments key
         record = {
-            "response": {"choices": [{"message": {"tool_calls": [{"function": {"name": "test"}}]}}]}
+            "response": {
+                "choices": [
+                    {"message": {"tool_calls": [{"function": {"name": "test"}}]}}
+                ]
+            }
         }
         validator._parse_function_arguments_to_json(record)  # Should not raise
 
@@ -431,7 +462,9 @@ class TestOpenAIFormatValidator:
         for record in malformed_records:
             # Should not raise exceptions, just return False
             assert validator.validate_chat_completion_format(record) is False
-            assert validator.validate_tool_calling_quality(record) is False  # No tool calls found
+            assert (
+                validator.validate_tool_calling_quality(record) is False
+            )  # No tool calls found
 
     def test_validate_with_fixtures(
         self, validator, valid_openai_record, openai_record_with_tool_calls
@@ -442,8 +475,14 @@ class TestOpenAIFormatValidator:
         assert validator.validate_tool_calling_quality(valid_openai_record) is False
 
         # Record with tool calls should pass format but fail quality check
-        assert validator.validate_chat_completion_format(openai_record_with_tool_calls) is True
-        assert validator.validate_tool_calling_quality(openai_record_with_tool_calls) is True
+        assert (
+            validator.validate_chat_completion_format(openai_record_with_tool_calls)
+            is True
+        )
+        assert (
+            validator.validate_tool_calling_quality(openai_record_with_tool_calls)
+            is True
+        )
 
     def test_batch_validation(self, validator, openai_records_batch):
         """Test validation of multiple records."""
@@ -493,7 +532,9 @@ class TestOpenAIFormatValidator:
 
         # Parse arguments
         validator._parse_function_arguments_to_json(record)
-        args = record["response"]["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+        args = record["response"]["choices"][0]["message"]["tool_calls"][0]["function"][
+            "arguments"
+        ]
         assert isinstance(args, dict)
         assert args["nested"]["data"] == ["item1", "item2"]
 
@@ -502,11 +543,20 @@ class TestOpenAIFormatValidator:
         record = {
             "request": {
                 "messages": [
-                    {"role": "user", "content": "Hello 你好 🌍 \n\t Special chars: <>&\"'"}
+                    {
+                        "role": "user",
+                        "content": "Hello 你好 🌍 \n\t Special chars: <>&\"'",
+                    }
                 ]
             },
             "response": {
-                "choices": [{"message": {"content": "Response with émojis 🎉 and spëcial çhars"}}]
+                "choices": [
+                    {
+                        "message": {
+                            "content": "Response with émojis 🎉 and spëcial çhars"
+                        }
+                    }
+                ]
             },
         }
 
@@ -517,13 +567,18 @@ class TestOpenAIFormatValidator:
         """Test handling of very large records."""
         # Create a record with many messages
         messages = [
-            {"role": "user" if i % 2 == 0 else "assistant", "content": f"Message {i}" * 100}
+            {
+                "role": "user" if i % 2 == 0 else "assistant",
+                "content": f"Message {i}" * 100,
+            }
             for i in range(100)
         ]
 
         record = {
             "request": {"messages": messages},
-            "response": {"choices": [{"message": {"content": "Final response" * 1000}}]},
+            "response": {
+                "choices": [{"message": {"content": "Final response" * 1000}}]
+            },
         }
 
         assert validator.validate_chat_completion_format(record) is True
@@ -540,7 +595,9 @@ class TestOpenAIFormatValidator:
             ("", False),
         ],
     )
-    def test_finish_reason_variations(self, validator, finish_reason, expected_has_tools):
+    def test_finish_reason_variations(
+        self, validator, finish_reason, expected_has_tools
+    ):
         """Test different finish_reason values."""
         record = {
             "response": {
@@ -602,7 +659,9 @@ class TestOpenAIFormatValidator:
         validator._parse_function_arguments_to_json(record)
         # Empty string remains as is (not valid JSON)
         assert (
-            record["response"]["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+            record["response"]["choices"][0]["message"]["tool_calls"][0]["function"][
+                "arguments"
+            ]
             == ""
         )
 
@@ -630,7 +689,9 @@ class TestOpenAIFormatValidator:
         validator._parse_function_arguments_to_json(record)
         # Whitespace string remains as is
         assert (
-            record["response"]["choices"][0]["message"]["tool_calls"][0]["function"]["arguments"]
+            record["response"]["choices"][0]["message"]["tool_calls"][0]["function"][
+                "arguments"
+            ]
             == "   \n\t   "
         )
 

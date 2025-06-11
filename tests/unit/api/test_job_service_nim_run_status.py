@@ -196,7 +196,9 @@ class TestNIMRunStatusPopulation:
         flywheel_run_id, nim_id = nim_status_test_data
 
         # Mock NIM in ERROR state (shutdown failure)
-        error_message = "Error shutting down NIM deployment: Failed to terminate deployment"
+        error_message = (
+            "Error shutting down NIM deployment: Failed to terminate deployment"
+        )
         mock_db.nims.find.return_value = [
             {
                 "_id": nim_id,
@@ -223,7 +225,9 @@ class TestNIMRunStatusPopulation:
         assert nim["runtime_seconds"] == 1200.0
         assert nim["error"] == error_message
 
-    def test_nim_run_status_multiple_nims_different_states(self, mock_db, nim_status_test_data):
+    def test_nim_run_status_multiple_nims_different_states(
+        self, mock_db, nim_status_test_data
+    ):
         """Test multiple NIMs with different status states."""
         flywheel_run_id, _ = nim_status_test_data
         nim1_id = ObjectId()
@@ -295,7 +299,9 @@ class TestNIMRunStatusPopulation:
         assert nims[2]["deployment_status"] == DeploymentStatus.COMPLETED
         assert nims[2]["runtime_seconds"] == 1500.0
 
-    def test_nim_status_llm_judge_same_as_nim_completed(self, mock_db, nim_status_test_data):
+    def test_nim_status_llm_judge_same_as_nim_completed(
+        self, mock_db, nim_status_test_data
+    ):
         """Test NIM status is COMPLETED when LLM judge uses the same model (skip shutdown case)."""
         flywheel_run_id, nim_id = nim_status_test_data
 
@@ -355,7 +361,9 @@ class TestNIMRunStatusPopulation:
                 "deployment_status": deployment_status,
                 "runtime_seconds": 100.0,
                 "started_at": datetime.utcnow(),
-                "finished_at": datetime.utcnow() if nim_status == NIMRunStatus.COMPLETED else None,
+                "finished_at": (
+                    datetime.utcnow() if nim_status == NIMRunStatus.COMPLETED else None
+                ),
                 "error": error_message,
             }
         ]
@@ -398,7 +406,9 @@ class TestNIMRunStatusPopulation:
 
         with patch("src.api.job_service.get_db", return_value=mock_db):
             # This should handle None status gracefully
-            with pytest.raises(ValueError):  # NIMRunStatus(None) should raise ValueError
+            with pytest.raises(
+                ValueError
+            ):  # NIMRunStatus(None) should raise ValueError
                 get_job_details(flywheel_run_id)
 
     def test_nim_run_status_with_evaluations_and_customizations(

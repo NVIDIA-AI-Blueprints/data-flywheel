@@ -60,7 +60,9 @@ class FlywheelJobManager:
 
         try:
             # Get the flywheel run
-            flywheel_run = FlywheelRun.from_mongo(self.db_manager.get_flywheel_run(job_id))
+            flywheel_run = FlywheelRun.from_mongo(
+                self.db_manager.get_flywheel_run(job_id)
+            )
 
             # Get all NIMs for this job
             nims = self.db_manager.find_nims_for_job(job_object_id)
@@ -113,7 +115,9 @@ class FlywheelJobManager:
                     self.evaluator.delete_evaluation_job(evaluation["job_id"])
                     logger.info(f"Deleted evaluation job {evaluation['job_id']}")
                 except Exception as e:
-                    error_msg = f"Failed to delete evaluation job {evaluation['job_id']}: {e!s}"
+                    error_msg = (
+                        f"Failed to delete evaluation job {evaluation['job_id']}: {e!s}"
+                    )
                     logger.warning(error_msg)
                     self.cleanup_errors.append(error_msg)
 

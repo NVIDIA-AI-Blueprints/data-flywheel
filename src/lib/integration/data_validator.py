@@ -164,7 +164,9 @@ class DataValidator:
         # if limit is not set then limit=len(deduplicated_records)
         # else limit=min(limit, len(deduplicated_records)) to avoid random sampling error
         limit = (
-            len(deduplicated_records) if limit is None else min(limit, len(deduplicated_records))
+            len(deduplicated_records)
+            if limit is None
+            else min(limit, len(deduplicated_records))
         )
         selected_records = random.sample(deduplicated_records, limit)
 
@@ -173,7 +175,9 @@ class DataValidator:
 
         return selected_records
 
-    def get_tool_calling_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def get_tool_calling_records(
+        self, records: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Get tool calling records from a list of records.
 
@@ -226,7 +230,9 @@ class DataValidator:
 
         return filtered_records
 
-    def _deduplicate_records(self, records: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    def _deduplicate_records(
+        self, records: list[dict[str, Any]]
+    ) -> list[dict[str, Any]]:
         """
         Remove duplicate records based on user queries.
 
@@ -261,7 +267,9 @@ class DataValidator:
                 user_messages = [
                     msg["content"]
                     for msg in messages
-                    if isinstance(msg, dict) and msg.get("role") == "user" and msg.get("content")
+                    if isinstance(msg, dict)
+                    and msg.get("role") == "user"
+                    and msg.get("content")
                 ]
 
                 # Convert to tuple for hashability

@@ -68,12 +68,16 @@ async def create_job(request: JobRequest) -> JobResponse:
         workload_id=request.workload_id,
         flywheel_run_id=flywheel_run.id,
         client_id=request.client_id,
-        data_split_config=request.data_split_config.model_dump()
-        if request.data_split_config
-        else None,
+        data_split_config=(
+            request.data_split_config.model_dump()
+            if request.data_split_config
+            else None
+        ),
     )
 
-    return JobResponse(id=flywheel_run.id, status="queued", message="NIM workflow started")
+    return JobResponse(
+        id=flywheel_run.id, status="queued", message="NIM workflow started"
+    )
 
 
 @router.get("/jobs", response_model=JobsListResponse)

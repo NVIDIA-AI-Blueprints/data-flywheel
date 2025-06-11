@@ -139,9 +139,13 @@ if __name__ == "__main__":
         description="Load test data into Elasticsearch with specified parameters."
     )
     parser.add_argument("--workload-id", help="Unique identifier for the workload")
-    parser.add_argument("--file", help="Input JSONL file path (defaults based on workload-type)")
+    parser.add_argument(
+        "--file", help="Input JSONL file path (defaults based on workload-type)"
+    )
     parser.add_argument("--client-id", help="Optional client identifier")
-    parser.add_argument("--index-name", default=ES_COLLECTION_NAME, help="Optional index name")
+    parser.add_argument(
+        "--index-name", default=ES_COLLECTION_NAME, help="Optional index name"
+    )
 
     args = parser.parse_args()
 

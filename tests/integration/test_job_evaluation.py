@@ -46,8 +46,12 @@ def test_client() -> TestClient:
 def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
     """Mock external service responses"""
     with (
-        patch("src.lib.nemo.data_uploader.DataUploader.upload_data") as mock_upload_data,
-        patch("src.lib.nemo.data_uploader.DataUploader.get_file_uri") as mock_get_file_uri,
+        patch(
+            "src.lib.nemo.data_uploader.DataUploader.upload_data"
+        ) as mock_upload_data,
+        patch(
+            "src.lib.nemo.data_uploader.DataUploader.get_file_uri"
+        ) as mock_get_file_uri,
         patch("src.lib.nemo.evaluator.requests") as mock_requests,
         patch("src.lib.nemo.dms_client.requests") as mock_dms_requests,
         patch("src.lib.nemo.customizer.requests") as mock_customizer_requests,
@@ -57,7 +61,9 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
 
         def mock_dms_requests_side_effect(method, url, **kwargs):
             if method == "post" and "/v1/deployment/model-deployments" in url:
-                return MagicMock(status_code=200, json=lambda: {"deployment_id": "deployment-123"})
+                return MagicMock(
+                    status_code=200, json=lambda: {"deployment_id": "deployment-123"}
+                )
             elif method == "get" and "/v1/deployment/model-deployments" in url:
                 return MagicMock(
                     status_code=200,
@@ -78,10 +84,16 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
                         json=lambda: {
                             "data": [
                                 {"id": "meta/llama-3.2-1b-instruct", "status": "ready"},
-                                {"id": "meta/llama-3.3-70b-instruct", "status": "ready"},
+                                {
+                                    "id": "meta/llama-3.3-70b-instruct",
+                                    "status": "ready",
+                                },
                                 {"id": "test-model-id", "status": "ready"},
                                 {"id": output_model, "status": "ready"},
-                                {"id": "customized-meta/llama-3.2-1b-instruct", "status": "ready"},
+                                {
+                                    "id": "customized-meta/llama-3.2-1b-instruct",
+                                    "status": "ready",
+                                },
                             ]
                         },
                     )
@@ -93,14 +105,14 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
             else:
                 raise ValueError(f"Unexpected request: {method} {url}")
 
-        mock_dms_requests.post.side_effect = lambda url, **kwargs: mock_dms_requests_side_effect(
-            "post", url, **kwargs
+        mock_dms_requests.post.side_effect = (
+            lambda url, **kwargs: mock_dms_requests_side_effect("post", url, **kwargs)
         )
-        mock_dms_requests.get.side_effect = lambda url, **kwargs: mock_dms_requests_side_effect(
-            "get", url, **kwargs
+        mock_dms_requests.get.side_effect = (
+            lambda url, **kwargs: mock_dms_requests_side_effect("get", url, **kwargs)
         )
-        mock_dms_requests.delete.side_effect = lambda url, **kwargs: mock_dms_requests_side_effect(
-            "delete", url, **kwargs
+        mock_dms_requests.delete.side_effect = (
+            lambda url, **kwargs: mock_dms_requests_side_effect("delete", url, **kwargs)
         )
 
         # Mock requests responses based on URL
@@ -117,15 +129,21 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
                                     "tool-calling-accuracy": {
                                         "scores": {
                                             "function_name_accuracy": {"value": 0.9},
-                                            "function_name_and_args_accuracy": {"value": 0.8},
+                                            "function_name_and_args_accuracy": {
+                                                "value": 0.8
+                                            },
                                         }
                                     },
-                                    "correctness": {"scores": {"rating": {"value": 0.85}}},
+                                    "correctness": {
+                                        "scores": {"rating": {"value": 0.85}}
+                                    },
                                 }
                             },
                             "llm-as-judge": {
                                 "metrics": {
-                                    "llm-judge": {"scores": {"similarity": {"value": 0.85}}}
+                                    "llm-judge": {
+                                        "scores": {"similarity": {"value": 0.85}}
+                                    }
                                 }
                             },
                         }
@@ -134,19 +152,22 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
             elif method == "get" and "/v1/evaluation/jobs/eval-job-123" in url:
                 return MagicMock(
                     status_code=200,
-                    json=lambda: {"status": "completed", "status_details": {"progress": 100}},
+                    json=lambda: {
+                        "status": "completed",
+                        "status_details": {"progress": 100},
+                    },
                 )
             else:
                 raise ValueError(f"Unexpected request: {method} {url}")
 
-        mock_requests.post.side_effect = lambda url, **kwargs: mock_requests_side_effect(
-            "post", url, **kwargs
+        mock_requests.post.side_effect = (
+            lambda url, **kwargs: mock_requests_side_effect("post", url, **kwargs)
         )
         mock_requests.get.side_effect = lambda url, **kwargs: mock_requests_side_effect(
             "get", url, **kwargs
         )
-        mock_requests.delete.side_effect = lambda url, **kwargs: mock_requests_side_effect(
-            "delete", url, **kwargs
+        mock_requests.delete.side_effect = (
+            lambda url, **kwargs: mock_requests_side_effect("delete", url, **kwargs)
         )
 
         # Mock customizer responses
@@ -157,7 +178,11 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
                     status_code=200,
                     json=lambda: {"id": job_id, "output_model": output_model},
                 )
-            elif method == "get" and "/v1/customization/jobs/" in url and "/status" in url:
+            elif (
+                method == "get"
+                and "/v1/customization/jobs/" in url
+                and "/status" in url
+            ):
                 return MagicMock(
                     status_code=200,
                     json=lambda: {
@@ -186,13 +211,19 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
                 raise ValueError(f"Unexpected customizer request: {method} {url}")
 
         mock_customizer_requests.post.side_effect = (
-            lambda url, **kwargs: mock_customizer_requests_side_effect("post", url, **kwargs)
+            lambda url, **kwargs: mock_customizer_requests_side_effect(
+                "post", url, **kwargs
+            )
         )
         mock_customizer_requests.get.side_effect = (
-            lambda url, **kwargs: mock_customizer_requests_side_effect("get", url, **kwargs)
+            lambda url, **kwargs: mock_customizer_requests_side_effect(
+                "get", url, **kwargs
+            )
         )
         mock_customizer_requests.delete.side_effect = (
-            lambda url, **kwargs: mock_customizer_requests_side_effect("delete", url, **kwargs)
+            lambda url, **kwargs: mock_customizer_requests_side_effect(
+                "delete", url, **kwargs
+            )
         )
 
         # Mock upload_data to return the file path
@@ -278,7 +309,11 @@ def test_full_job_evaluation_flow(
         assert len(nim["evaluations"]) > 0
 
         for eval in nim["evaluations"]:
-            assert eval["eval_type"] in [EvalType.BASE, EvalType.ICL, EvalType.CUSTOMIZED]
+            assert eval["eval_type"] in [
+                EvalType.BASE,
+                EvalType.ICL,
+                EvalType.CUSTOMIZED,
+            ]
             assert eval["scores"] is not None
             assert eval["progress"] == 100.0
             assert eval["started_at"] is not None
@@ -306,7 +341,11 @@ def test_full_job_evaluation_flow(
         evaluations = list(db.evaluations.find({"nim_id": nim["_id"]}))
         assert len(evaluations) > 0
         for eval in evaluations:
-            assert eval["eval_type"] in [EvalType.BASE, EvalType.ICL, EvalType.CUSTOMIZED]
+            assert eval["eval_type"] in [
+                EvalType.BASE,
+                EvalType.ICL,
+                EvalType.CUSTOMIZED,
+            ]
             assert eval["scores"] is not None
             assert eval["progress"] == 100.0
 
@@ -316,4 +355,6 @@ def test_full_job_evaluation_flow(
     # Verify evaluator calls
     assert mock_requests.post.called
     assert mock_requests.get.called
-    assert mock_requests.post.call_count >= 3  # At least 3 calls: status checks and results
+    assert (
+        mock_requests.post.call_count >= 3
+    )  # At least 3 calls: status checks and results

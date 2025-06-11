@@ -42,7 +42,9 @@ class DataSplitConfig(BaseModel):
     )
     min_total_records: int = Field(default=50, description="Minimum total records")
     random_seed: int | None = Field(None, description="Random seed")
-    limit: int = Field(default=10000, description="Limit on number of records to evaluate")
+    limit: int = Field(
+        default=10000, description="Limit on number of records to evaluate"
+    )
     parse_function_arguments: bool = Field(
         default=True, description="Data Validation: Parse function arguments to JSON"
     )
@@ -51,7 +53,9 @@ class DataSplitConfig(BaseModel):
 class ICLConfig(BaseModel):
     """Configuration for ICL"""
 
-    max_context_length: int = Field(default=8192, description="Maximum context length for ICL")
+    max_context_length: int = Field(
+        default=8192, description="Maximum context length for ICL"
+    )
     reserved_tokens: int = Field(default=2048, description="Reserved tokens for ICL")
     max_examples: int = Field(default=3, description="Maximum examples for ICL")
     min_examples: int = Field(default=1, description="Minimum examples for ICL")
@@ -86,7 +90,9 @@ class NIMConfig(BaseModel):
     gpus: int | None = Field(None, description="Number of GPUs for deployment")
     pvc_size: str | None = Field(None, description="Size of PVC for deployment")
     registry_base: str = Field(default="nvcr.io/nim", frozen=True)
-    customization_enabled: bool = Field(default=False, description="Enable customization")
+    customization_enabled: bool = Field(
+        default=False, description="Enable customization"
+    )
 
     def nmp_model_name(self) -> str:
         """Models names in NMP cannot have slashes, so we have to replace them with dashes."""
@@ -214,7 +220,9 @@ class Settings(BaseSettings):
         with open(config_path) as f:
             config_data = yaml.safe_load(f)
             lora_config = LoRAConfig(**config_data["lora_config"])
-            training_config = TrainingConfig(**config_data["training_config"], lora=lora_config)
+            training_config = TrainingConfig(
+                **config_data["training_config"], lora=lora_config
+            )
             llm_judge_config = LLMJudgeConfig.from_json(config_data["llm_judge_config"])
             logging_config = (
                 LoggingConfig(**config_data.get("logging_config", {}))

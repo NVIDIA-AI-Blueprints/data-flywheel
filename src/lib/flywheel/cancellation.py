@@ -24,7 +24,9 @@ logger = setup_logging("data_flywheel.cancellation")
 class FlywheelCancelledError(Exception):
     """Exception raised when a flywheel run is cancelled."""
 
-    def __init__(self, flywheel_run_id: str, message: str = "Flywheel run was cancelled"):
+    def __init__(
+        self, flywheel_run_id: str, message: str = "Flywheel run was cancelled"
+    ):
         self.flywheel_run_id = flywheel_run_id
         self.message = message
         super().__init__(self.message)

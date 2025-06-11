@@ -79,7 +79,15 @@ class CleanupManager:
         """Check if docker compose services are running."""
         try:
             result = subprocess.run(
-                ["docker", "compose", "-f", "deploy/docker-compose.yaml", "ps", "--format", "json"],
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    "deploy/docker-compose.yaml",
+                    "ps",
+                    "--format",
+                    "json",
+                ],
                 cwd=project_root,
                 capture_output=True,
                 text=True,
@@ -98,7 +106,15 @@ class CleanupManager:
         logger.info("Starting MongoDB service temporarily...")
         try:
             subprocess.run(
-                ["docker", "compose", "-f", "deploy/docker-compose.yaml", "up", "-d", "mongodb"],
+                [
+                    "docker",
+                    "compose",
+                    "-f",
+                    "deploy/docker-compose.yaml",
+                    "up",
+                    "-d",
+                    "mongodb",
+                ],
                 cwd=project_root,
                 check=True,
             )
@@ -137,9 +153,14 @@ class CleanupManager:
         """Find all flywheel runs that are currently running."""
         logger.info("Finding running flywheel runs...")
 
-        running_statuses = [FlywheelRunStatus.PENDING.value, FlywheelRunStatus.RUNNING.value]
+        running_statuses = [
+            FlywheelRunStatus.PENDING.value,
+            FlywheelRunStatus.RUNNING.value,
+        ]
 
-        running_runs = list(self.db.flywheel_runs.find({"status": {"$in": running_statuses}}))
+        running_runs = list(
+            self.db.flywheel_runs.find({"status": {"$in": running_statuses}})
+        )
 
         logger.info(f"Found {len(running_runs)} running flywheel runs")
         return running_runs
@@ -160,7 +181,9 @@ class CleanupManager:
             )
         )
 
-        logger.info(f"Found {len(running_nims)} running NIMs for flywheel run {flywheel_run_id}")
+        logger.info(
+            f"Found {len(running_nims)} running NIMs for flywheel run {flywheel_run_id}"
+        )
         return running_nims
 
     def find_customization_jobs(self, nim_id: ObjectId) -> list[dict[str, Any]]:
@@ -189,7 +212,9 @@ class CleanupManager:
             if "job_id" in customization:
                 try:
                     self.customizer.cancel_job(customization["job_id"])
-                    logger.info(f"Cancelled customization job {customization['job_id']}")
+                    logger.info(
+                        f"Cancelled customization job {customization['job_id']}"
+                    )
                 except Exception as e:
                     error_msg = f"Failed to cancel customization job {customization['job_id']}: {e}"
                     logger.warning(error_msg)
@@ -211,7 +236,9 @@ class CleanupManager:
             return
 
         try:
-            dms_client = self._dms_client_class(nmp_config=self.settings.nmp_config, nim=nim_config)
+            dms_client = self._dms_client_class(
+                nmp_config=self.settings.nmp_config, nim=nim_config
+            )
             dms_client.shutdown_deployment()
             logger.info(f"Shutdown NIM deployment for {model_name}")
         except Exception as e:
@@ -232,7 +259,9 @@ class CleanupManager:
                 nmp_config=self.settings.nmp_config, nim=llm_judge_config
             )
             dms_client.shutdown_deployment()
-            logger.info(f"Shutdown LLM judge deployment for {llm_judge_config.model_name}")
+            logger.info(
+                f"Shutdown LLM judge deployment for {llm_judge_config.model_name}"
+            )
         except Exception as e:
             error_msg = f"Failed to shutdown LLM judge: {e}"
             logger.warning(error_msg)
@@ -277,7 +306,9 @@ class CleanupManager:
                 },
             )
 
-            logger.info(f"Marked all resources as cancelled for flywheel run {flywheel_run_id}")
+            logger.info(
+                f"Marked all resources as cancelled for flywheel run {flywheel_run_id}"
+            )
 
         except Exception as e:
             error_msg = f"Failed to mark resources as cancelled: {e}"
@@ -315,7 +346,9 @@ class CleanupManager:
 
         # Check if docker compose is already running
         if self.check_docker_compose_status():
-            logger.error("Docker compose services are still running. Please stop them first with:")
+            logger.error(
+                "Docker compose services are still running. Please stop them first with:"
+            )
             logger.error("cd deploy && docker compose down")
             sys.exit(1)
 
@@ -335,7 +368,9 @@ class CleanupManager:
                 try:
                     self.cleanup_flywheel_run(flywheel_run)
                 except Exception as e:
-                    error_msg = f"Failed to clean up flywheel run {flywheel_run['_id']}: {e}"
+                    error_msg = (
+                        f"Failed to clean up flywheel run {flywheel_run['_id']}: {e}"
+                    )
                     logger.error(error_msg)
                     self.cleanup_errors.append(error_msg)
 
@@ -344,7 +379,9 @@ class CleanupManager:
 
             # Report results
             if self.cleanup_errors:
-                logger.warning(f"Cleanup completed with {len(self.cleanup_errors)} errors:")
+                logger.warning(
+                    f"Cleanup completed with {len(self.cleanup_errors)} errors:"
+                )
                 for error in self.cleanup_errors:
                     logger.warning(f"  - {error}")
             else:

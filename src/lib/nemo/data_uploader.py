@@ -200,7 +200,9 @@ class DataUploader:
 
         return dataset_obj
 
-    def register_dataset(self, description: str = "", project: str = "flywheel") -> dict[str, Any]:
+    def register_dataset(
+        self, description: str = "", project: str = "flywheel"
+    ) -> dict[str, Any]:
         """
         Register the dataset with the entity store after all files are uploaded.
 
@@ -242,7 +244,9 @@ class DataUploader:
             )
         else:
             # Dataset doesn't exist, create it
-            resp = requests.post(url=f"{self.entity_host}/v1/datasets", json=dataset_payload)
+            resp = requests.post(
+                url=f"{self.entity_host}/v1/datasets", json=dataset_payload
+            )
         assert resp.status_code in (
             200,
             201,
@@ -289,7 +293,9 @@ class DataUploader:
 
             # Skip if folder doesn't exist
             if not os.path.exists(folder_path):
-                logger.warning(f"Warning: Folder {folder_name} not found in {data_folder}")
+                logger.warning(
+                    f"Warning: Folder {folder_name} not found in {data_folder}"
+                )
                 continue
 
             # Find all .jsonl files in the folder
@@ -318,7 +324,11 @@ class DataUploader:
         """
         # Delete the repository from the Data Store
         delete_url = f"{self.ds_host}/v1/hf/api/repos/delete"
-        payload = {"name": self.dataset_name, "organization": self.namespace, "type": "dataset"}
+        payload = {
+            "name": self.dataset_name,
+            "organization": self.namespace,
+            "type": "dataset",
+        }
         resp = requests.delete(delete_url, json=payload)
         assert resp.status_code in (
             200,
@@ -334,7 +344,9 @@ class DataUploader:
             AssertionError: If the unregistration fails
         """
         # Delete the dataset registration from the Entity Store
-        unregister_url = f"{self.entity_host}/v1/datasets/{self.namespace}/{self.dataset_name}"
+        unregister_url = (
+            f"{self.entity_host}/v1/datasets/{self.namespace}/{self.dataset_name}"
+        )
         resp = requests.delete(unregister_url)
         assert resp.status_code in (
             200,

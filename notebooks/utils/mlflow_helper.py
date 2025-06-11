@@ -20,16 +20,18 @@ import mlflow
 import pandas as pd
 import json
 
-def download_and_process_eval(eval_id: str, nmp_eval_uri: str, save_dir: Path, 
-                             model: str, eval_type: str) -> bool:
+
+def download_and_process_eval(
+    eval_id: str, nmp_eval_uri: str, save_dir: Path, model: str, eval_type: str
+) -> bool:
     """Downloads evaluation results and extracts ZIP contents to save_dir."""
     # Create output directory
     save_dir.mkdir(parents=True, exist_ok=True)
-    
+
     # Download results
     url = f"{nmp_eval_uri}/download-results"
-    response = requests.get(url, headers={'accept': 'application/json'})
-    
+    response = requests.get(url, headers={"accept": "application/json"})
+
     if not response.ok:
         print(f"Download failed [{response.status_code}]: {response.text}")
         return False
@@ -46,53 +48,64 @@ def download_and_process_eval(eval_id: str, nmp_eval_uri: str, save_dir: Path,
 
     # Cleanup ZIP
     zip_path.unlink()
-    
+
     # Find and rename results.json
     results_json = next(save_dir.glob("**/results.json"), None)
     if results_json:
         # Sanitize model name to avoid directory separators in filename
-        safe_model_name = model.replace('/', '_').replace('\\', '_')
+        safe_model_name = model.replace("/", "_").replace("\\", "_")
         new_name = save_dir / f"{safe_model_name}_{eval_type}.json"
         results_json.rename(new_name)
         print(f"Renamed results to {new_name}")
         print(f"Successfully processed {eval_id}")
         return new_name
-        
+
     print("Error: results.json not found in extracted files")
     print(f"Failed to process {eval_id}")
     return False
 
 
 def load_results(file_path):
-    with open(file_path, 'r') as f:
+    with open(file_path, "r") as f:
         return json.load(f)
 
+
 def extract_metrics(item):
-    metrics = item.get('metrics', {})
-    sample = item.get('sample', {})
-    usage = sample.get('response', {}).get('usage', {})
+    metrics = item.get("metrics", {})
+    sample = item.get("sample", {})
+    usage = sample.get("response", {}).get("usage", {})
     return {
-        'function_name_accuracy': metrics.get('tool-calling-accuracy', {}).get('scores', {}).get('function_name_accuracy', {}).get('value'),
-        'function_name_and_args_accuracy': metrics.get('tool-calling-accuracy', {}).get('scores', {}).get('function_name_and_args_accuracy', {}).get('value'),
-        'correctness_rating': metrics.get('correctness', {}).get('scores', {}).get('rating', {}).get('value'),
-        'total_tokens': usage.get('total_tokens'),
-        'prompt_tokens': usage.get('prompt_tokens'),
-        'completion_tokens': usage.get('completion_tokens')
+        "function_name_accuracy": metrics.get("tool-calling-accuracy", {})
+        .get("scores", {})
+        .get("function_name_accuracy", {})
+        .get("value"),
+        "function_name_and_args_accuracy": metrics.get("tool-calling-accuracy", {})
+        .get("scores", {})
+        .get("function_name_and_args_accuracy", {})
+        .get("value"),
+        "correctness_rating": metrics.get("correctness", {})
+        .get("scores", {})
+        .get("rating", {})
+        .get("value"),
+        "total_tokens": usage.get("total_tokens"),
+        "prompt_tokens": usage.get("prompt_tokens"),
+        "completion_tokens": usage.get("completion_tokens"),
     }
+
 
 def extract_metadata(item):
-    sample = item.get('sample', {})
-    response = sample.get('response', {})
+    sample = item.get("sample", {})
+    response = sample.get("response", {})
     return {
-        'model': response.get('model'),
-        'workload_id': item.get('item', {}).get('workload_id'),
-        'client_id': item.get('item', {}).get('client_id'),
-        'timestamp': item.get('item', {}).get('timestamp')
+        "model": response.get("model"),
+        "workload_id": item.get("item", {}).get("workload_id"),
+        "client_id": item.get("item", {}).get("client_id"),
+        "timestamp": item.get("item", {}).get("timestamp"),
     }
 
+
 def upload_result_to_mlflow(
-    results_path: Path,
-    tracking_uri: str = "http://0.0.0.0:5000"
+    results_path: Path, tracking_uri: str = "http://0.0.0.0:5000"
 ):
     # Parse experiment name and run name from path
     experiment_name = results_path.parent.name  # flywheel job id
@@ -115,9 +128,9 @@ def upload_result_to_mlflow(
 
     # Group by model (if needed)
     model_evaluations = {}
-    for item in results.get('custom-tool-calling', []):
+    for item in results.get("custom-tool-calling", []):
         metadata = extract_metadata(item)
-        model_name = metadata['model']
+        model_name = metadata["model"]
         model_evaluations.setdefault(model_name, []).append(item)
 
     # Print summary of what will be uploaded
@@ -130,7 +143,11 @@ def upload_result_to_mlflow(
 
     # Upload each model's results as a separate run (if multiple models)
     for model_name, evaluations in model_evaluations.items():
-        this_run_name = f"{run_name}_{model_name.replace('/', '_')}" if len(model_evaluations) > 1 else run_name
+        this_run_name = (
+            f"{run_name}_{model_name.replace('/', '_')}"
+            if len(model_evaluations) > 1
+            else run_name
+        )
         with mlflow.start_run(experiment_id=experiment_id, run_name=this_run_name):
             mlflow.log_param("model", model_name)
             mlflow.log_param("run_name", run_name)
@@ -139,16 +156,23 @@ def upload_result_to_mlflow(
             for item in evaluations:
                 metrics = extract_metrics(item)
                 metadata = extract_metadata(item)
-                metrics_data.append({'timestamp': metadata['timestamp'], **metrics})
-            metrics_df = pd.DataFrame(metrics_data).sort_values('timestamp')
+                metrics_data.append({"timestamp": metadata["timestamp"], **metrics})
+            metrics_df = pd.DataFrame(metrics_data).sort_values("timestamp")
             for step, (_, row) in enumerate(metrics_df.iterrows()):
-                mlflow.log_metrics(row.drop('timestamp').to_dict(), step=step)
+                mlflow.log_metrics(row.drop("timestamp").to_dict(), step=step)
             # Log summary statistics
             summary_metrics = {
                 f"mean_{col}": metrics_df[col].mean()
-                for col in ['function_name_accuracy', 'function_name_and_args_accuracy', 'correctness_rating', 'total_tokens', 'prompt_tokens', 'completion_tokens']
+                for col in [
+                    "function_name_accuracy",
+                    "function_name_and_args_accuracy",
+                    "correctness_rating",
+                    "total_tokens",
+                    "prompt_tokens",
+                    "completion_tokens",
+                ]
                 if col in metrics_df
             }
-            summary_metrics['total_evaluations'] = len(evaluations)
+            summary_metrics["total_evaluations"] = len(evaluations)
             mlflow.log_metrics(summary_metrics)
         print(f"✅ Uploaded run '{this_run_name}' to experiment '{experiment_name}'")

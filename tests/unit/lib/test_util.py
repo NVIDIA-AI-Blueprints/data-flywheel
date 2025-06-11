@@ -43,7 +43,13 @@ def test_generate_icl_records_basic():
             },
             "response": {
                 "choices": [
-                    {"message": {"role": "assistant", "content": "Hi there!", "tool_calls": None}}
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Hi there!",
+                            "tool_calls": None,
+                        }
+                    }
                 ]
             },
         }
@@ -63,7 +69,9 @@ def test_generate_icl_records_with_tool_calls():
     records: list[Record] = [
         {
             "request": {
-                "messages": [{"role": "user", "content": "What is the weather in New York?"}]
+                "messages": [
+                    {"role": "user", "content": "What is the weather in New York?"}
+                ]
             },
             "response": {
                 "choices": [
@@ -112,13 +120,21 @@ def test_generate_icl_records_multiple():
             },
             "response": {
                 "choices": [
-                    {"message": {"role": "assistant", "content": "Hi there!", "tool_calls": None}}
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Hi there!",
+                            "tool_calls": None,
+                        }
+                    }
                 ]
             },
         },
         {
             "request": {
-                "messages": [{"role": "user", "content": "What is the weather in New York?"}]
+                "messages": [
+                    {"role": "user", "content": "What is the weather in New York?"}
+                ]
             },
             "response": {
                 "choices": [
@@ -216,9 +232,7 @@ def test_generate_icl_records_invalid_structure():
     records: list[Record] = [
         {
             "request": {"messages": [{"role": "user", "content": "Hello"}]},
-            "response": {
-                "choices": []  # Empty choices array
-            },
+            "response": {"choices": []},  # Empty choices array
         }
     ]
 
@@ -267,7 +281,9 @@ def test_generate_icl_records_sampling():
             unique_responses.add(response)
 
     assert len(unique_messages) == 3, "There should be three unique 'Message X' strings"
-    assert len(unique_responses) == 3, "There should be three unique 'Response X' strings"
+    assert (
+        len(unique_responses) == 3
+    ), "There should be three unique 'Response X' strings"
 
 
 def test_generate_icl_records_tool_call_formatting():
@@ -275,7 +291,9 @@ def test_generate_icl_records_tool_call_formatting():
     records: list[Record] = [
         {
             "request": {
-                "messages": [{"role": "user", "content": "Get weather for multiple locations"}]
+                "messages": [
+                    {"role": "user", "content": "Get weather for multiple locations"}
+                ]
             },
             "response": {
                 "choices": [
@@ -324,7 +342,9 @@ def test_generate_icl_records_mixed_tool_calls():
     """Test with records containing both tool calls and regular responses."""
     records: list[Record] = [
         {
-            "request": {"messages": [{"role": "user", "content": "Get weather for New York"}]},
+            "request": {
+                "messages": [{"role": "user", "content": "Get weather for New York"}]
+            },
             "response": {
                 "choices": [
                     {
@@ -407,19 +427,25 @@ def test_validate_records_valid():
         # Standard case (100 records, 5 eval, 10% val)
         (
             100,
-            DataSplitConfig(eval_size=5, val_ratio=0.1, min_total_records=20, random_seed=42),
+            DataSplitConfig(
+                eval_size=5, val_ratio=0.1, min_total_records=20, random_seed=42
+            ),
             {"eval": 5, "val": 10, "train": 85},
         ),
         # Larger eval set (200 records, 20 eval, 15% val)
         (
             200,
-            DataSplitConfig(eval_size=20, val_ratio=0.15, min_total_records=50, random_seed=42),
+            DataSplitConfig(
+                eval_size=20, val_ratio=0.15, min_total_records=50, random_seed=42
+            ),
             {"eval": 20, "val": 27, "train": 153},
         ),
         # Minimum case (20 records, 2 eval, 20% val)
         (
             20,
-            DataSplitConfig(eval_size=2, val_ratio=0.2, min_total_records=20, random_seed=42),
+            DataSplitConfig(
+                eval_size=2, val_ratio=0.2, min_total_records=20, random_seed=42
+            ),
             {"eval": 2, "val": 4, "train": 14},
         ),
     ],
@@ -458,7 +484,13 @@ def test_generate_icl_records_default_system_message():
             "request": {"messages": [{"role": "user", "content": "Hello"}]},
             "response": {
                 "choices": [
-                    {"message": {"role": "assistant", "content": "Hi there!", "tool_calls": None}}
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Hi there!",
+                            "tool_calls": None,
+                        }
+                    }
                 ]
             },
         }
@@ -490,7 +522,13 @@ def test_generate_icl_records_prepends_default_system_message():
             },
             "response": {
                 "choices": [
-                    {"message": {"role": "assistant", "content": "Hi!", "tool_calls": None}}
+                    {
+                        "message": {
+                            "role": "assistant",
+                            "content": "Hi!",
+                            "tool_calls": None,
+                        }
+                    }
                 ]
             },
         }
@@ -538,7 +576,9 @@ def test_format_evaluator():
                                     "type": "function",
                                     "function": {
                                         "name": "get_time",
-                                        "arguments": {"timezone": "EST"},  # Object format
+                                        "arguments": {
+                                            "timezone": "EST"
+                                        },  # Object format
                                     },
                                 }
                             ],

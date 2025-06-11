@@ -127,8 +127,12 @@ def create_flywheel_run_generic(test_workload_id: str, client_id: str):
 def mock_external_services_validation() -> Generator[dict[str, MagicMock], None, None]:
     """Mock external service responses for data validation tests"""
     with (
-        patch("src.lib.nemo.data_uploader.DataUploader.upload_data") as mock_upload_data,
-        patch("src.lib.nemo.data_uploader.DataUploader.get_file_uri") as mock_get_file_uri,
+        patch(
+            "src.lib.nemo.data_uploader.DataUploader.upload_data"
+        ) as mock_upload_data,
+        patch(
+            "src.lib.nemo.data_uploader.DataUploader.get_file_uri"
+        ) as mock_get_file_uri,
     ):
         mock_get_file_uri.return_value = "test_uri"
         mock_upload_data.side_effect = lambda data, file_path: file_path
@@ -143,15 +147,21 @@ def mock_external_services_validation() -> Generator[dict[str, MagicMock], None,
 def validation_test_settings(monkeypatch):
     """Configure settings for validation tests with deterministic values."""
     # Data-split parameters
-    monkeypatch.setattr(settings.data_split_config, "min_total_records", 1, raising=False)
+    monkeypatch.setattr(
+        settings.data_split_config, "min_total_records", 1, raising=False
+    )
     monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
     monkeypatch.setattr(settings.data_split_config, "eval_size", 2, raising=False)
     monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
     monkeypatch.setattr(settings.data_split_config, "limit", 10, raising=False)
-    monkeypatch.setattr(settings.data_split_config, "parse_function_arguments", True, raising=False)
+    monkeypatch.setattr(
+        settings.data_split_config, "parse_function_arguments", True, raising=False
+    )
 
     # NMP namespace
-    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    new_nmp_cfg = settings.nmp_config.model_copy(
+        update={"nmp_namespace": "test-namespace"}
+    )
     monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
 
     yield
@@ -165,7 +175,10 @@ def valid_generic_records() -> list[dict[str, Any]]:
             "request": {
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant."},
-                    {"role": "user", "content": f"Question {i}: What is the capital of France?"},
+                    {
+                        "role": "user",
+                        "content": f"Question {i}: What is the capital of France?",
+                    },
                 ]
             },
             "response": {
@@ -193,7 +206,10 @@ def valid_tool_calling_records() -> list[dict[str, Any]]:
         {
             "request": {
                 "messages": [
-                    {"role": "system", "content": "You are a helpful assistant with tool access."},
+                    {
+                        "role": "system",
+                        "content": "You are a helpful assistant with tool access.",
+                    },
                     {"role": "user", "content": f"Get weather for city {i}"},
                 ]
             },
@@ -231,12 +247,16 @@ def invalid_format_records() -> list[dict[str, Any]]:
     return [
         # Missing request field
         {
-            "response": {"choices": [{"message": {"content": "Response without request"}}]},
+            "response": {
+                "choices": [{"message": {"content": "Response without request"}}]
+            },
             "timestamp": "2023-01-01T00:00:00Z",
         },
         # Missing response field
         {
-            "request": {"messages": [{"role": "user", "content": "Request without response"}]},
+            "request": {
+                "messages": [{"role": "user", "content": "Request without response"}]
+            },
             "timestamp": "2023-01-01T00:00:00Z",
         },
         # Invalid messages format
@@ -266,17 +286,25 @@ def duplicate_query_records() -> list[dict[str, Any]]:
     return [
         {
             "request": {"messages": [{"role": "user", "content": "What is AI?"}]},
-            "response": {"choices": [{"message": {"content": "AI is artificial intelligence."}}]},
+            "response": {
+                "choices": [{"message": {"content": "AI is artificial intelligence."}}]
+            },
             "timestamp": "2023-01-01T00:00:00Z",
         },
         {
-            "request": {"messages": [{"role": "user", "content": "What is AI?"}]},  # Duplicate
-            "response": {"choices": [{"message": {"content": "Different response about AI."}}]},
+            "request": {
+                "messages": [{"role": "user", "content": "What is AI?"}]
+            },  # Duplicate
+            "response": {
+                "choices": [{"message": {"content": "Different response about AI."}}]
+            },
             "timestamp": "2023-01-01T00:00:01Z",
         },
         {
             "request": {"messages": [{"role": "user", "content": "What is ML?"}]},
-            "response": {"choices": [{"message": {"content": "ML is machine learning."}}]},
+            "response": {
+                "choices": [{"message": {"content": "ML is machine learning."}}]
+            },
             "timestamp": "2023-01-01T00:00:02Z",
         },
     ]

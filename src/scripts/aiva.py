@@ -66,7 +66,9 @@ function_name_mapping = {}
 
 for record in records:
     tools = record.get("tools", [])
-    function_names = sorted(tool.get("function", {}).get("name", "wat") for tool in tools)
+    function_names = sorted(
+        tool.get("function", {}).get("name", "wat") for tool in tools
+    )
     function_names_str = ",".join(function_names)
 
     if function_names_str in function_name_mapping:
@@ -104,7 +106,9 @@ for record in records:
             first_assistant_response = msg
             break
     # 4. Set workload_id based on function_name_mapping
-    function_names = sorted(tool.get("function", {}).get("name", "wat") for tool in tools)
+    function_names = sorted(
+        tool.get("function", {}).get("name", "wat") for tool in tools
+    )
     function_names_str = ",".join(function_names)
     workload_id = function_name_to_workload_id.get(function_names_str, "unknown")
     # Build the new record

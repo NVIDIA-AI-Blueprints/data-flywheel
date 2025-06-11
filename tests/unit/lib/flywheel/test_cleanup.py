@@ -115,7 +115,9 @@ def test_delete_job_success(cleanup_manager, mock_db_manager):
 
     # Configure mock DB responses
     mock_db_manager.get_flywheel_run.return_value = flywheel_run.to_mongo()
-    mock_db_manager.find_nims_for_job.return_value = [{"_id": nim_id, "model_name": "test_model"}]
+    mock_db_manager.find_nims_for_job.return_value = [
+        {"_id": nim_id, "model_name": "test_model"}
+    ]
     mock_db_manager.find_customizations_for_nim.return_value = [
         {"customized_model": "test_model_custom_1"},
         {"customized_model": "test_model_custom_2"},
@@ -144,8 +146,12 @@ def test_delete_job_success(cleanup_manager, mock_db_manager):
 
     # Verify customized models were deleted
     assert cleanup_manager.customizer.delete_customized_model.call_count == 2
-    cleanup_manager.customizer.delete_customized_model.assert_any_call("test_model_custom_1")
-    cleanup_manager.customizer.delete_customized_model.assert_any_call("test_model_custom_2")
+    cleanup_manager.customizer.delete_customized_model.assert_any_call(
+        "test_model_custom_1"
+    )
+    cleanup_manager.customizer.delete_customized_model.assert_any_call(
+        "test_model_custom_2"
+    )
 
     # Verify evaluation jobs were deleted
     assert cleanup_manager.evaluator.delete_evaluation_job.call_count == 2
@@ -173,7 +179,9 @@ def test_delete_job_partial_failure(cleanup_manager, mock_db_manager):
 
     # Configure mock DB responses
     mock_db_manager.get_flywheel_run.return_value = flywheel_run.to_mongo()
-    mock_db_manager.find_nims_for_job.return_value = [{"_id": nim_id, "model_name": "test_model"}]
+    mock_db_manager.find_nims_for_job.return_value = [
+        {"_id": nim_id, "model_name": "test_model"}
+    ]
     mock_db_manager.find_customizations_for_nim.return_value = [
         {"customized_model": "test_model_custom_1"},
     ]
@@ -212,7 +220,9 @@ def test_delete_job_complete_failure(cleanup_manager, mock_db_manager):
     job_id = str(ObjectId())
 
     # Mock database to raise an exception
-    mock_db_manager.get_flywheel_run.side_effect = Exception("Database connection failed")
+    mock_db_manager.get_flywheel_run.side_effect = Exception(
+        "Database connection failed"
+    )
 
     # Execute cleanup and verify it raises the exception
     with pytest.raises(Exception) as exc_info:
@@ -234,7 +244,9 @@ def test_delete_job_invalid_job_id(cleanup_manager):
         cleanup_manager.delete_job(invalid_job_id)
 
     # Verify the error message
-    assert "ObjectId" in str(exc_info.value), "Should raise error about invalid ObjectId format"
+    assert "ObjectId" in str(
+        exc_info.value
+    ), "Should raise error about invalid ObjectId format"
 
     # Verify no database operations were attempted
     cleanup_manager.db_manager.get_flywheel_run.assert_not_called()
@@ -248,12 +260,22 @@ def test_delete_job_invalid_job_id(cleanup_manager):
 class TestCleanupManager:
     """Test cases for the CleanupManager class."""
 
-    def test_find_running_flywheel_runs_success(self, cleanup_manager_instance, mock_db_manager):
+    def test_find_running_flywheel_runs_success(
+        self, cleanup_manager_instance, mock_db_manager
+    ):
         """Test successful retrieval of running flywheel runs."""
         # Mock database response with running flywheel runs
         expected_runs = [
-            {"_id": ObjectId(), "status": FlywheelRunStatus.RUNNING.value, "workload_id": "test1"},
-            {"_id": ObjectId(), "status": FlywheelRunStatus.PENDING.value, "workload_id": "test2"},
+            {
+                "_id": ObjectId(),
+                "status": FlywheelRunStatus.RUNNING.value,
+                "workload_id": "test1",
+            },
+            {
+                "_id": ObjectId(),
+                "status": FlywheelRunStatus.PENDING.value,
+                "workload_id": "test2",
+            },
         ]
         mock_db_manager.find_running_flywheel_runs.return_value = expected_runs
 
@@ -265,7 +287,9 @@ class TestCleanupManager:
         assert len(result) == 2
         mock_db_manager.find_running_flywheel_runs.assert_called_once()
 
-    def test_find_running_flywheel_runs_empty(self, cleanup_manager_instance, mock_db_manager):
+    def test_find_running_flywheel_runs_empty(
+        self, cleanup_manager_instance, mock_db_manager
+    ):
         """Test finding running flywheel runs when none exist."""
         # Mock empty database response
         mock_db_manager.find_running_flywheel_runs.return_value = []
@@ -281,8 +305,16 @@ class TestCleanupManager:
         """Test successful retrieval of running NIMs for a flywheel run."""
         flywheel_run_id = ObjectId()
         expected_nims = [
-            {"_id": ObjectId(), "status": NIMRunStatus.RUNNING.value, "model_name": "test-model-1"},
-            {"_id": ObjectId(), "status": NIMRunStatus.PENDING.value, "model_name": "test-model-2"},
+            {
+                "_id": ObjectId(),
+                "status": NIMRunStatus.RUNNING.value,
+                "model_name": "test-model-1",
+            },
+            {
+                "_id": ObjectId(),
+                "status": NIMRunStatus.PENDING.value,
+                "model_name": "test-model-2",
+            },
         ]
         mock_db_manager.find_running_nims_for_flywheel.return_value = expected_nims
 
@@ -292,16 +324,22 @@ class TestCleanupManager:
         # Verify results
         assert result == expected_nims
         assert len(result) == 2
-        mock_db_manager.find_running_nims_for_flywheel.assert_called_once_with(flywheel_run_id)
+        mock_db_manager.find_running_nims_for_flywheel.assert_called_once_with(
+            flywheel_run_id
+        )
 
-    def test_find_customization_jobs_success(self, cleanup_manager_instance, mock_db_manager):
+    def test_find_customization_jobs_success(
+        self, cleanup_manager_instance, mock_db_manager
+    ):
         """Test successful retrieval of customization jobs for a NIM."""
         nim_id = ObjectId()
         expected_customizations = [
             {"_id": ObjectId(), "job_id": "custom-job-1", "nim_id": nim_id},
             {"_id": ObjectId(), "job_id": "custom-job-2", "nim_id": nim_id},
         ]
-        mock_db_manager.find_customizations_for_nim.return_value = expected_customizations
+        mock_db_manager.find_customizations_for_nim.return_value = (
+            expected_customizations
+        )
 
         # Execute the method
         result = cleanup_manager_instance.find_customization_jobs(nim_id)
@@ -311,7 +349,9 @@ class TestCleanupManager:
         assert len(result) == 2
         mock_db_manager.find_customizations_for_nim.assert_called_once_with(nim_id)
 
-    def test_find_evaluation_jobs_success(self, cleanup_manager_instance, mock_db_manager):
+    def test_find_evaluation_jobs_success(
+        self, cleanup_manager_instance, mock_db_manager
+    ):
         """Test successful retrieval of evaluation jobs for a NIM."""
         nim_id = ObjectId()
         expected_evaluations = [
@@ -429,7 +469,10 @@ class TestCleanupManager:
 
         # Verify error was recorded
         assert len(cleanup_manager_instance.cleanup_errors) == 1
-        assert "Failed to shutdown NIM test-model" in cleanup_manager_instance.cleanup_errors[0]
+        assert (
+            "Failed to shutdown NIM test-model"
+            in cleanup_manager_instance.cleanup_errors[0]
+        )
 
     def test_shutdown_llm_judge_local(self, cleanup_manager_instance):
         """Test shutdown of local LLM judge."""
@@ -470,7 +513,9 @@ class TestCleanupManager:
 
         # Mock DMS client that fails
         mock_dms_client = MagicMock()
-        mock_dms_client.shutdown_deployment.side_effect = Exception("Judge shutdown failed")
+        mock_dms_client.shutdown_deployment.side_effect = Exception(
+            "Judge shutdown failed"
+        )
         cleanup_manager_instance._mock_dms_client_class.return_value = mock_dms_client
 
         # Execute the method
@@ -478,9 +523,13 @@ class TestCleanupManager:
 
         # Verify error was recorded
         assert len(cleanup_manager_instance.cleanup_errors) == 1
-        assert "Failed to shutdown LLM judge" in cleanup_manager_instance.cleanup_errors[0]
+        assert (
+            "Failed to shutdown LLM judge" in cleanup_manager_instance.cleanup_errors[0]
+        )
 
-    def test_mark_resources_as_cancelled_success(self, cleanup_manager_instance, mock_db_manager):
+    def test_mark_resources_as_cancelled_success(
+        self, cleanup_manager_instance, mock_db_manager
+    ):
         """Test successful marking of resources as cancelled."""
         flywheel_run_id = ObjectId()
 
@@ -514,16 +563,23 @@ class TestCleanupManager:
         # Verify no errors were recorded
         assert len(cleanup_manager_instance.cleanup_errors) == 0
 
-    def test_mark_resources_as_cancelled_failure(self, cleanup_manager_instance, mock_db_manager):
+    def test_mark_resources_as_cancelled_failure(
+        self, cleanup_manager_instance, mock_db_manager
+    ):
         """Test marking resources as cancelled with database failure."""
         flywheel_run_id = ObjectId()
 
         # Configure database to fail
-        mock_db_manager.mark_flywheel_run_cancelled.side_effect = Exception("Database error")
+        mock_db_manager.mark_flywheel_run_cancelled.side_effect = Exception(
+            "Database error"
+        )
 
         # Execute the method
         cleanup_manager_instance.mark_resources_as_cancelled(flywheel_run_id)
 
         # Verify error was recorded
         assert len(cleanup_manager_instance.cleanup_errors) == 1
-        assert "Failed to mark resources as cancelled" in cleanup_manager_instance.cleanup_errors[0]
+        assert (
+            "Failed to mark resources as cancelled"
+            in cleanup_manager_instance.cleanup_errors[0]
+        )

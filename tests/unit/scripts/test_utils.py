@@ -47,7 +47,9 @@ def test_validate_path_input_file_exists(mock_project_root):
 def test_validate_path_input_file_not_found(mock_project_root):
     """Test validation of a non-existent input file"""
     with pytest.raises(SystemExit):
-        validate_path(str(mock_project_root / "data" / "nonexistent.txt"), is_input=True)
+        validate_path(
+            str(mock_project_root / "data" / "nonexistent.txt"), is_input=True
+        )
 
 
 def test_validate_path_output_file_creates_dirs(mock_project_root):

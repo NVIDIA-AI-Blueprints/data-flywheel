@@ -55,7 +55,9 @@ class TestCustomizer:
         """Test initialization fails without nemo_base_url."""
         with patch("src.lib.nemo.customizer.settings") as mock_settings:
             mock_settings.nmp_config.nemo_base_url = None
-            with pytest.raises(AssertionError, match="nemo_base_url must be set in config"):
+            with pytest.raises(
+                AssertionError, match="nemo_base_url must be set in config"
+            ):
                 Customizer()
 
     def test_start_training_job_success(self, customizer, training_config):
@@ -142,7 +144,9 @@ class TestCustomizer:
         mock_response.json.return_value = {"data": [{"id": model_name}]}
 
         # Mock get_db_manager to prevent actual DB calls
-        with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        with patch(
+            "src.lib.flywheel.cancellation.get_db_manager"
+        ) as mock_get_db_manager:
             mock_db_manager = mock_get_db_manager.return_value
             mock_db_manager.is_flywheel_run_cancelled.return_value = False
             with patch("requests.get", return_value=mock_response):
@@ -163,7 +167,9 @@ class TestCustomizer:
         mock_response.json.return_value = {"data": []}
 
         # Mock get_db_manager to prevent actual DB calls
-        with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        with patch(
+            "src.lib.flywheel.cancellation.get_db_manager"
+        ) as mock_get_db_manager:
             mock_db_manager = mock_get_db_manager.return_value
             mock_db_manager.is_flywheel_run_cancelled.return_value = False
             with patch("requests.get", return_value=mock_response):
@@ -180,7 +186,9 @@ class TestCustomizer:
         job_id = "test-job"
 
         # Mock get_db_manager to prevent actual DB calls
-        with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        with patch(
+            "src.lib.flywheel.cancellation.get_db_manager"
+        ) as mock_get_db_manager:
             mock_db_manager = mock_get_db_manager.return_value
             mock_db_manager.is_flywheel_run_cancelled.return_value = False
             with patch.object(customizer, "get_job_status") as mock_get_job_status:
@@ -202,7 +210,9 @@ class TestCustomizer:
         job_id = "test-job"
 
         # Mock get_db_manager to prevent actual DB calls
-        with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        with patch(
+            "src.lib.flywheel.cancellation.get_db_manager"
+        ) as mock_get_db_manager:
             mock_db_manager = mock_get_db_manager.return_value
             mock_db_manager.is_flywheel_run_cancelled.return_value = False
             with patch.object(customizer, "get_job_status") as mock_get_job_status:
@@ -224,7 +234,9 @@ class TestCustomizer:
         job_id = "test-job"
 
         # Mock get_db_manager to prevent actual DB calls
-        with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        with patch(
+            "src.lib.flywheel.cancellation.get_db_manager"
+        ) as mock_get_db_manager:
             mock_db_manager = mock_get_db_manager.return_value
             mock_db_manager.is_flywheel_run_cancelled.return_value = False
             with patch.object(customizer, "get_job_status") as mock_get_job_status:
@@ -242,12 +254,16 @@ class TestCustomizer:
                         timeout=1,
                     )
 
-    def test_wait_for_customization_not_enough_resources(self, customizer, sample_flywheel_run_id):
+    def test_wait_for_customization_not_enough_resources(
+        self, customizer, sample_flywheel_run_id
+    ):
         """Test customization wait with not enough resources."""
         job_id = "test-job"
 
         # Mock get_db_manager to prevent actual DB calls
-        with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_get_db_manager:
+        with patch(
+            "src.lib.flywheel.cancellation.get_db_manager"
+        ) as mock_get_db_manager:
             mock_db_manager = mock_get_db_manager.return_value
             mock_db_manager.is_flywheel_run_cancelled.return_value = False
             with patch.object(customizer, "get_job_status") as mock_get_job_status:

@@ -62,17 +62,22 @@ class DatasetCreator:
         # Update FlywheelRun document with number of records
         db = get_db()
         db.flywheel_runs.update_one(
-            {"_id": ObjectId(self.flywheel_run_id)}, {"$set": {"num_records": len(self.records)}}
+            {"_id": ObjectId(self.flywheel_run_id)},
+            {"$set": {"num_records": len(self.records)}},
         )
 
         # split the jsonl data into train and val
-        eval_records, train_records, val_records = split_records(self.records, self.split_config)
+        eval_records, train_records, val_records = split_records(
+            self.records, self.split_config
+        )
         logger.info(
             f"Split {len(self.records)} records into {len(eval_records)} eval, {len(train_records)} train, {len(val_records)} val"
         )
 
         # Select ICL examples from training records
-        icl_examples = select_icl_examples(train_records, settings.icl_config, workload_type)
+        icl_examples = select_icl_examples(
+            train_records, settings.icl_config, workload_type
+        )
         msg = f"ICL Examples:\n Workload Type: {workload_type}\n"
         for tool_name, examples in icl_examples.items():
             msg += f"Selected {len(examples)} examples for tool {tool_name}\n"

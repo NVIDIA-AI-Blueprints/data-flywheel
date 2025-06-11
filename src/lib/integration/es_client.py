@@ -28,16 +28,8 @@ ES_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
 
 ES_INDEX_SETTINGS = {
     "settings": {
-        "mapping": {
-            "total_fields": {
-                "limit": 1000  # Keep the default limit
-            }
-        },
-        "index": {
-            "mapping": {
-                "ignore_malformed": True  # Ignore malformed fields
-            }
-        },
+        "mapping": {"total_fields": {"limit": 1000}},  # Keep the default limit
+        "index": {"mapping": {"ignore_malformed": True}},  # Ignore malformed fields
     },
     "mappings": {
         "dynamic": "strict",  # Only allow explicitly defined fields
@@ -75,7 +67,9 @@ def get_es_client():
                     if not client.indices.exists(index=ES_COLLECTION_NAME):
                         logger.info("Creating index...")
                         # Define the index settings with field mappings
-                        client.indices.create(index=ES_COLLECTION_NAME, body=ES_INDEX_SETTINGS)
+                        client.indices.create(
+                            index=ES_COLLECTION_NAME, body=ES_INDEX_SETTINGS
+                        )
                     else:
                         logger.info("Index already exists")
 

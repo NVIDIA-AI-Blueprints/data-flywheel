@@ -216,7 +216,9 @@ def delete_job(job_id: str) -> JobDeleteResponse:
         db = get_db()
         flywheel_run = db.flywheel_runs.find_one({"_id": job_object_id})
         if not flywheel_run:
-            raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Job with ID {job_id} not found"
+            )
 
         # Convert to model for type-safe access
         flywheel_run = FlywheelRun.from_mongo(flywheel_run)
@@ -224,7 +226,8 @@ def delete_job(job_id: str) -> JobDeleteResponse:
         # Check if job is still running
         if not flywheel_run.finished_at:
             raise HTTPException(
-                status_code=400, detail="Cannot delete a running job. Please cancel the job first."
+                status_code=400,
+                detail="Cannot delete a running job. Please cancel the job first.",
             )
 
         # Fire off the Celery task with validated job_id
@@ -269,7 +272,9 @@ def cancel_job(job_id: str) -> JobCancelResponse:
         # Get the flywheel run document
         flywheel_run = get_db_manager().get_flywheel_run(job_object_id)
         if not flywheel_run:
-            raise HTTPException(status_code=404, detail=f"Job with ID {job_id} not found")
+            raise HTTPException(
+                status_code=404, detail=f"Job with ID {job_id} not found"
+            )
 
         # Convert to model for type-safe access
         flywheel_run = FlywheelRun.from_mongo(flywheel_run)

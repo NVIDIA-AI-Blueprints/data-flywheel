@@ -109,7 +109,10 @@ def validate_nim_details(
     assert nims[nim_index]["deployment_status"] == expected_status
 
     if expected_eval_score is not None:
-        assert nims[nim_index]["evaluations"][0]["scores"]["function_name"] == expected_eval_score
+        assert (
+            nims[nim_index]["evaluations"][0]["scores"]["function_name"]
+            == expected_eval_score
+        )
 
 
 def validate_llm_judge(llm_judge, expected_status=None, expected_model_name=None):
@@ -162,7 +165,9 @@ class TestJobService:
             assert result_json["nims"][1]["customizations"][0]["epochs_completed"] == 8
 
             # Validate LLM Judge
-            validate_llm_judge(result_json["llm_judge"], DeploymentStatus.READY, "test-llm-judge")
+            validate_llm_judge(
+                result_json["llm_judge"], DeploymentStatus.READY, "test-llm-judge"
+            )
 
     def test_get_job_details_not_found(self, mock_db):
         """Test handling of non-existent job ID"""
@@ -180,7 +185,10 @@ class TestJobService:
         [
             (
                 "completed",
-                {"finished_at": datetime.utcnow(), "status": FlywheelRunStatus.COMPLETED},
+                {
+                    "finished_at": datetime.utcnow(),
+                    "status": FlywheelRunStatus.COMPLETED,
+                },
                 "completed",
             ),
             (
@@ -226,19 +234,25 @@ class TestJobService:
             ),
             (
                 "no_nims",
-                lambda mock_db: setattr(mock_db.nims, "find", MagicMock(return_value=[])),
+                lambda mock_db: setattr(
+                    mock_db.nims, "find", MagicMock(return_value=[])
+                ),
                 lambda result_json: validate_nims(result_json["nims"], 0),
             ),
             (
                 "no_evaluations",
-                lambda mock_db: setattr(mock_db.evaluations, "find", MagicMock(return_value=[])),
+                lambda mock_db: setattr(
+                    mock_db.evaluations, "find", MagicMock(return_value=[])
+                ),
                 lambda result_json: all(
                     len(nim["evaluations"]) == 0 for nim in result_json["nims"]
                 ),
             ),
             (
                 "no_customizations",
-                lambda mock_db: setattr(mock_db.customizations, "find", MagicMock(return_value=[])),
+                lambda mock_db: setattr(
+                    mock_db.customizations, "find", MagicMock(return_value=[])
+                ),
                 lambda result_json: all(
                     len(nim["customizations"]) == 0 for nim in result_json["nims"]
                 ),
@@ -366,7 +380,10 @@ class TestJobService:
 
         # Create test function to assert the job details at a given step
         def assert_job_details(
-            expected_datasets_count, expected_nims_count, expected_status, expected_llm_judge=None
+            expected_datasets_count,
+            expected_nims_count,
+            expected_status,
+            expected_llm_judge=None,
         ):
             with patch("src.api.job_service.get_db", return_value=mock_db):
                 job_details = get_job_details(flywheel_run_id)
@@ -383,7 +400,10 @@ class TestJobService:
                         assert job_json["llm_judge"] is None
                     else:
                         assert job_json["llm_judge"] is not None
-                        assert job_json["llm_judge"]["deployment_status"] == expected_llm_judge
+                        assert (
+                            job_json["llm_judge"]["deployment_status"]
+                            == expected_llm_judge
+                        )
 
                 return job_json
 
@@ -609,8 +629,9 @@ class TestJobService:
                 delete_job(test_db["flywheel_run_id"])
 
             assert exc_info.value.status_code == 500
-            assert f"Failed to initiate job deletion for {test_db['flywheel_run_id']}" in str(
-                exc_info.value.detail
+            assert (
+                f"Failed to initiate job deletion for {test_db['flywheel_run_id']}"
+                in str(exc_info.value.detail)
             )
 
     @patch("src.api.job_service.get_db_manager")
@@ -685,7 +706,9 @@ class TestJobService:
 
         # Should raise 400 error for trying to cancel a finished job
         assert exc_info.value.status_code == 400
-        assert "Cannot cancel a job that has already finished" in str(exc_info.value.detail)
+        assert "Cannot cancel a job that has already finished" in str(
+            exc_info.value.detail
+        )
 
     @patch("src.api.job_service.get_db_manager")
     def test_cancel_already_cancelled_job(self, mock_get_db_manager, test_db):
@@ -704,7 +727,10 @@ class TestJobService:
 
         # Should return success but indicate it was already cancelled
         assert result.id == test_db["flywheel_run_id"]
-        assert "already" in result.message.lower() and "cancelled" in result.message.lower()
+        assert (
+            "already" in result.message.lower()
+            and "cancelled" in result.message.lower()
+        )
 
     @patch("src.api.job_service.get_db_manager")
     def test_cancel_job_db_error(self, mock_get_db_manager, test_db):
@@ -718,7 +744,9 @@ class TestJobService:
             "started_at": datetime.utcnow(),
             "status": FlywheelRunStatus.RUNNING,
         }
-        mock_db_manager.mark_flywheel_run_cancelled.side_effect = Exception("Database error")
+        mock_db_manager.mark_flywheel_run_cancelled.side_effect = Exception(
+            "Database error"
+        )
 
         with pytest.raises(HTTPException) as exc_info:
             cancel_job(test_db["flywheel_run_id"])

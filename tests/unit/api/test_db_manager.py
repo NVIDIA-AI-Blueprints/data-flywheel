@@ -56,7 +56,12 @@ class TestTaskDBManager:
 
         db_manager._flywheel_runs.update_one.assert_called_once_with(
             {"_id": ObjectId(run_id), "error": None},
-            {"$set": {"finished_at": finished_at, "status": FlywheelRunStatus.COMPLETED}},
+            {
+                "$set": {
+                    "finished_at": finished_at,
+                    "status": FlywheelRunStatus.COMPLETED,
+                }
+            },
         )
 
     def test_mark_flywheel_run_error(self, db_manager):
@@ -110,7 +115,9 @@ class TestTaskDBManager:
         )
 
         # Test with deployment status
-        db_manager.set_nim_status(nim_id, status, deployment_status=DeploymentStatus.RUNNING)
+        db_manager.set_nim_status(
+            nim_id, status, deployment_status=DeploymentStatus.RUNNING
+        )
         db_manager._nims.update_one.assert_called_with(
             {"_id": nim_id},
             {"$set": {"status": status, "deployment_status": DeploymentStatus.RUNNING}},
@@ -121,11 +128,18 @@ class TestTaskDBManager:
         deployment_status = DeploymentStatus.RUNNING
         runtime_seconds = 123.45
 
-        db_manager.update_nim_deployment_status(nim_id, deployment_status, runtime_seconds)
+        db_manager.update_nim_deployment_status(
+            nim_id, deployment_status, runtime_seconds
+        )
 
         db_manager._nims.update_one.assert_called_once_with(
             {"_id": nim_id},
-            {"$set": {"deployment_status": deployment_status, "runtime_seconds": runtime_seconds}},
+            {
+                "$set": {
+                    "deployment_status": deployment_status,
+                    "runtime_seconds": runtime_seconds,
+                }
+            },
         )
 
     def test_mark_nim_completed(self, db_manager):
@@ -368,7 +382,9 @@ class TestTaskDBManager:
         result = db_manager.get_flywheel_run(job_id)
 
         assert result == expected_result
-        db_manager._flywheel_runs.find_one.assert_called_once_with({"_id": ObjectId(job_id)})
+        db_manager._flywheel_runs.find_one.assert_called_once_with(
+            {"_id": ObjectId(job_id)}
+        )
 
     def test_find_nims_for_job(self, db_manager):
         job_id = ObjectId()
@@ -406,10 +422,18 @@ class TestTaskDBManager:
         db_manager.delete_job_records(job_id)
 
         # Verify all delete operations were called
-        db_manager._evaluations.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
-        db_manager._customizations.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
-        db_manager._nims.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
-        db_manager.llm_judge_runs.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
+        db_manager._evaluations.delete_many.assert_called_once_with(
+            {"flywheel_run_id": job_id}
+        )
+        db_manager._customizations.delete_many.assert_called_once_with(
+            {"flywheel_run_id": job_id}
+        )
+        db_manager._nims.delete_many.assert_called_once_with(
+            {"flywheel_run_id": job_id}
+        )
+        db_manager.llm_judge_runs.delete_many.assert_called_once_with(
+            {"flywheel_run_id": job_id}
+        )
         db_manager._flywheel_runs.delete_one.assert_called_once_with({"_id": job_id})
 
     def test_init_with_uninitialized_db(self, db_manager):

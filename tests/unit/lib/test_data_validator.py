@@ -39,9 +39,21 @@ class TestDataValidator:
             # Insufficient records, eval_size = 70 > 50
             (WorkloadClassification.GENERIC, 50, 100, 70, "Not enough records found"),
             # Tool calling workload with sufficient records which will be filtered out
-            (WorkloadClassification.TOOL_CALLING, 150, 100, 20, "Insufficient valid records"),
+            (
+                WorkloadClassification.TOOL_CALLING,
+                150,
+                100,
+                20,
+                "Insufficient valid records",
+            ),
             # Tool calling with insufficient records
-            (WorkloadClassification.TOOL_CALLING, 50, 100, 20, "Insufficient valid records"),
+            (
+                WorkloadClassification.TOOL_CALLING,
+                50,
+                100,
+                20,
+                "Insufficient valid records",
+            ),
         ],
     )
     def test_validate_records_basic_flow(
@@ -97,7 +109,9 @@ class TestDataValidator:
             assert expected_error in str(exc_info.value)
         else:
             result = validator.validate_records(
-                records, workload_type, DataSplitConfig(limit=limit, min_total_records=min_records)
+                records,
+                workload_type,
+                DataSplitConfig(limit=limit, min_total_records=min_records),
             )
             assert len(result) == min(limit, len(records))
             assert all(r in records for r in result)
@@ -114,8 +128,12 @@ class TestDataValidator:
         valid_records = []
         for i in range(10):
             record = {
-                "request": {"messages": [{"role": "user", "content": f"Valid question {i}"}]},
-                "response": {"choices": [{"message": {"content": f"Valid response {i}"}}]},
+                "request": {
+                    "messages": [{"role": "user", "content": f"Valid question {i}"}]
+                },
+                "response": {
+                    "choices": [{"message": {"content": f"Valid response {i}"}}]
+                },
             }
             valid_records.append(record)
 
@@ -148,15 +166,23 @@ class TestDataValidator:
         records_without_tools = []
         for i in range(10):
             record = {
-                "request": {"messages": [{"role": "user", "content": f"Simple question {i}"}]},
-                "response": {"choices": [{"message": {"content": f"Simple answer {i}"}}]},
+                "request": {
+                    "messages": [{"role": "user", "content": f"Simple question {i}"}]
+                },
+                "response": {
+                    "choices": [{"message": {"content": f"Simple answer {i}"}}]
+                },
             }
             records_without_tools.append(record)
 
         records_with_tools = []
         for i in range(5):
             record = {
-                "request": {"messages": [{"role": "user", "content": f"Get weather for city {i}"}]},
+                "request": {
+                    "messages": [
+                        {"role": "user", "content": f"Get weather for city {i}"}
+                    ]
+                },
                 "response": {
                     "choices": [
                         {
@@ -290,7 +316,8 @@ class TestDataValidator:
             "src.lib.integration.data_validator.settings.data_split_config.limit", 5
         )
         monkeypatch.setattr(
-            "src.lib.integration.data_validator.settings.data_split_config.random_seed", 42
+            "src.lib.integration.data_validator.settings.data_split_config.random_seed",
+            42,
         )
 
         # Create more records than needed - make them unique
@@ -331,7 +358,12 @@ class TestDataValidator:
                     {
                         "message": {
                             "tool_calls": [
-                                {"function": {"name": "test", "arguments": '{"key": "value"}'}}
+                                {
+                                    "function": {
+                                        "name": "test",
+                                        "arguments": '{"key": "value"}',
+                                    }
+                                }
                             ]
                         }
                     }
@@ -383,7 +415,9 @@ class TestDataValidator:
         assert "Insufficient valid records" in str(exc_info.value)
         assert "valid OpenAI format: 0" in str(exc_info.value)
 
-    def test_validation_stats_tracking(self, validator, valid_openai_record, monkeypatch):
+    def test_validation_stats_tracking(
+        self, validator, valid_openai_record, monkeypatch
+    ):
         """Test that validation stats are properly tracked."""
         monkeypatch.setattr(
             "src.lib.integration.data_validator.settings.data_split_config.limit", 2
@@ -453,7 +487,9 @@ class TestDataValidator:
         }
         simple_record = {"response": {"choices": [{"message": {"content": "Hi"}}]}}
 
-        validator.get_tool_calling_records([record_with_function_calls])  # updates in place
+        validator.get_tool_calling_records(
+            [record_with_function_calls]
+        )  # updates in place
 
         if parse_setting:
             tool_call = record_with_function_calls["response"]["choices"][0]["message"][
@@ -562,5 +598,9 @@ class TestDataValidator:
                 DataSplitConfig(limit=5, min_total_records=10, eval_size=5),
             )
 
-        assert "limit cannot be less than the minimum number of records" in str(exc_info.value)
-        assert "limit is 5, but the minimum number of records is 10" in str(exc_info.value)
+        assert "limit cannot be less than the minimum number of records" in str(
+            exc_info.value
+        )
+        assert "limit is 5, but the minimum number of records is 10" in str(
+            exc_info.value
+        )

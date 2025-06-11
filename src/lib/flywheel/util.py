@@ -81,10 +81,15 @@ def estimate_tokens(text: str, buffer_percent: int = 20) -> int:
 def format_example(record: Record) -> tuple[str, int]:
     """Format a record into an example string and estimate its token count."""
     request_messages = "".join(
-        [f"{msg['role']}: {msg['content']}\n\n" for msg in record["request"]["messages"]]
+        [
+            f"{msg['role']}: {msg['content']}\n\n"
+            for msg in record["request"]["messages"]
+        ]
     )
     resp = record["response"]["choices"][0]["message"]
-    response_content = f"{resp.get('role', 'unknown')}: {resp.get('content', 'unknown')}"
+    response_content = (
+        f"{resp.get('role', 'unknown')}: {resp.get('content', 'unknown')}"
+    )
 
     # Add tool calls if present
     if resp.get("tool_calls"):
@@ -113,7 +118,9 @@ def get_tool_name(record: Record) -> str:
 
 
 def select_icl_examples(
-    source_records: list[Record], config: ICLConfig, workload_type: WorkloadClassification
+    source_records: list[Record],
+    config: ICLConfig,
+    workload_type: WorkloadClassification,
 ) -> dict[str, list[tuple[Record, str, int]]]:
     """
     Select and organize ICL examples by tool groups with uniform binning for tool_calling records,
@@ -238,7 +245,9 @@ def generate_icl_records(
     for record in result:
         # Calculate available tokens for this specific record
         record_tokens = estimate_tokens(json.dumps(record))
-        available_tokens = config.max_context_length - config.reserved_tokens - record_tokens
+        available_tokens = (
+            config.max_context_length - config.reserved_tokens - record_tokens
+        )
 
         if available_tokens <= 0:
             continue  # Skip if there are NOT enough tokens
@@ -338,12 +347,17 @@ def format_evaluator(records: list[Record]) -> list[Record]:
             for message in formatted_record["request"]["messages"]:
                 if message.get("tool_calls"):
                     for tool_call in message["tool_calls"]:
-                        if "function" in tool_call and "arguments" in tool_call["function"]:
+                        if (
+                            "function" in tool_call
+                            and "arguments" in tool_call["function"]
+                        ):
                             arguments = tool_call["function"]["arguments"]
                             # Convert arguments to JSON string if they're currently an object
                             if isinstance(arguments, dict):
                                 try:
-                                    tool_call["function"]["arguments"] = json.dumps(arguments)
+                                    tool_call["function"]["arguments"] = json.dumps(
+                                        arguments
+                                    )
                                 except (TypeError, ValueError) as e:
                                     logger.warning(
                                         f"Failed to serialize tool call arguments: {arguments}, error: {e}"

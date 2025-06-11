@@ -260,7 +260,9 @@ class TestJobServiceCreateDatasets:
             workload_id="test-workload",
             flywheel_run_id=str(ObjectId()),
             client_id="test-client",
-            llm_judge_config=LLMJudgeConfig(**{"type": "remote", "model_name": "test-judge"}),
+            llm_judge_config=LLMJudgeConfig(
+                **{"type": "remote", "model_name": "test-judge"}
+            ),
             error=None,
             evaluations={},
         )
@@ -362,7 +364,11 @@ class TestJobServiceCreateDatasets:
                 "hits": [
                     {
                         "_source": {
-                            "request": {"messages": [{"role": "user", "content": f"Message {i}"}]},
+                            "request": {
+                                "messages": [
+                                    {"role": "user", "content": f"Message {i}"}
+                                ]
+                            },
                             "response": {
                                 "choices": [
                                     {
@@ -423,7 +429,9 @@ class TestJobServiceCreateDatasets:
             workload_id="test-workload",
             flywheel_run_id=str(ObjectId()),
             client_id="test-client",
-            llm_judge_config=LLMJudgeConfig(**{"type": "remote", "model_name": "test-judge"}),
+            llm_judge_config=LLMJudgeConfig(
+                **{"type": "remote", "model_name": "test-judge"}
+            ),
             error=None,
             evaluations={},
             data_split_config=split_config,

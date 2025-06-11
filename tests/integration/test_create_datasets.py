@@ -20,7 +20,12 @@ from unittest.mock import MagicMock, patch
 import pytest
 from bson import ObjectId
 
-from src.api.models import DatasetType, FlywheelRun, TaskResult, WorkloadClassification  # E402
+from src.api.models import (
+    DatasetType,
+    FlywheelRun,
+    TaskResult,
+    WorkloadClassification,
+)  # E402
 from src.config import settings
 from src.lib.flywheel.util import DataSplitConfig  # E402
 from src.tasks.tasks import create_datasets  # E402
@@ -37,7 +42,9 @@ def tweak_settings(monkeypatch):
     """Provide deterministic test configuration via the global `settings`."""
 
     # --- Data-split parameters (fields are *not* frozen) --------------------
-    monkeypatch.setattr(settings.data_split_config, "min_total_records", 10, raising=False)
+    monkeypatch.setattr(
+        settings.data_split_config, "min_total_records", 10, raising=False
+    )
     monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
     monkeypatch.setattr(settings.data_split_config, "eval_size", 2, raising=False)
     monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
@@ -46,7 +53,9 @@ def tweak_settings(monkeypatch):
     )  # Reduced from 100 to 15
 
     # --- NMP namespace (field *is* frozen, so create a new object) ----------
-    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    new_nmp_cfg = settings.nmp_config.model_copy(
+        update={"nmp_namespace": "test-namespace"}
+    )
     monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
 
     yield
@@ -56,8 +65,12 @@ def tweak_settings(monkeypatch):
 def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
     """Mock external service responses"""
     with (
-        patch("src.lib.nemo.data_uploader.DataUploader.upload_data") as mock_upload_data,
-        patch("src.lib.nemo.data_uploader.DataUploader.get_file_uri") as mock_get_file_uri,
+        patch(
+            "src.lib.nemo.data_uploader.DataUploader.upload_data"
+        ) as mock_upload_data,
+        patch(
+            "src.lib.nemo.data_uploader.DataUploader.get_file_uri"
+        ) as mock_get_file_uri,
     ):
         mock_get_file_uri.return_value = "test_uri"
         mock_upload_data.side_effect = lambda data, file_path: file_path
@@ -164,7 +177,9 @@ def test_create_datasets(
 
             # Should be called 4 times: eval data, icl data, train data, and val data
             assert mock_upload_data.call_count == 4
-            assert mock_get_file_uri.call_count == 3  # Called once for each dataset type
+            assert (
+                mock_get_file_uri.call_count == 3
+            )  # Called once for each dataset type
 
 
 @pytest.mark.integration
@@ -243,7 +258,9 @@ def test_create_datasets_different_split_configs(
                 TaskResult.model_validate(result)
 
                 # Verify datasets reflect the split configuration
-                db_doc = mongo_db.flywheel_runs.find_one({"_id": ObjectId(flywheel_run_id)})
+                db_doc = mongo_db.flywheel_runs.find_one(
+                    {"_id": ObjectId(flywheel_run_id)}
+                )
                 datasets = db_doc["datasets"]
                 eval_dataset = next(d for d in datasets if "eval" in d["name"])
                 assert eval_dataset["num_records"] == config.eval_size
@@ -410,7 +427,9 @@ def test_create_datasets_not_enough_records_error(
             {
                 "client_id": "test-client",
                 "workload_id": "test-workload",
-                "request": {"messages": [{"role": "user", "content": "malformed request"}]},
+                "request": {
+                    "messages": [{"role": "user", "content": "malformed request"}]
+                },
                 "response": {"choices": []},  # Empty choices list
                 "timestamp": "2023-01-01T00:00:00Z",
             },
@@ -423,7 +442,9 @@ def test_create_datasets_not_enough_records_error(
                 "workload_id": "test-workload",
                 "request": {},  # Missing messages
                 "response": {
-                    "choices": [{"message": {"role": "assistant", "content": "response"}}]
+                    "choices": [
+                        {"message": {"role": "assistant", "content": "response"}}
+                    ]
                 },
                 "timestamp": "2023-01-01T00:00:00Z",
             },
@@ -434,7 +455,9 @@ def test_create_datasets_not_enough_records_error(
             {
                 "client_id": "test-client",
                 "workload_id": "test-workload",
-                "request": {"messages": [{"role": "user", "content": "malformed response"}]},
+                "request": {
+                    "messages": [{"role": "user", "content": "malformed response"}]
+                },
                 "response": {"choices": [{}]},  # Missing message field in choice
                 "timestamp": "2023-01-01T00:00:00Z",
             },
@@ -445,7 +468,9 @@ def test_create_datasets_not_enough_records_error(
             {
                 "client_id": "test-client",
                 "workload_id": "test-workload",
-                "request": {"messages": [{"role": "user", "content": "missing response"}]},
+                "request": {
+                    "messages": [{"role": "user", "content": "missing response"}]
+                },
                 # Missing response field entirely
                 "timestamp": "2023-01-01T00:00:00Z",
             },
@@ -471,7 +496,9 @@ def test_create_datasets_specific_malformed_records(
     flywheel_run_id, mongo_db = create_flywheel_run
 
     # Mock Elasticsearch to return a mix of good and malformed records
-    with patch("src.lib.integration.record_exporter.get_es_client") as mock_get_es_client:
+    with patch(
+        "src.lib.integration.record_exporter.get_es_client"
+    ) as mock_get_es_client:
         mock_es_client = MagicMock()
         mock_get_es_client.return_value = mock_es_client
 
@@ -480,9 +507,18 @@ def test_create_datasets_specific_malformed_records(
             {
                 "client_id": "test-client",
                 "workload_id": "test-workload",
-                "request": {"messages": [{"role": "user", "content": f"Good request {i}"}]},
+                "request": {
+                    "messages": [{"role": "user", "content": f"Good request {i}"}]
+                },
                 "response": {
-                    "choices": [{"message": {"role": "assistant", "content": f"Good response {i}"}}]
+                    "choices": [
+                        {
+                            "message": {
+                                "role": "assistant",
+                                "content": f"Good response {i}",
+                            }
+                        }
+                    ]
                 },
                 "timestamp": "2023-01-01T00:00:00Z",
             }
@@ -546,30 +582,26 @@ def test_create_datasets_specific_malformed_records(
             eval_data = (
                 [eval_data]
                 if isinstance(eval_data, dict)
-                else eval_data.split("\n")
-                if isinstance(eval_data, str)
-                else eval_data
+                else eval_data.split("\n") if isinstance(eval_data, str) else eval_data
             )
             icl_data = (
                 [icl_data]
                 if isinstance(icl_data, dict)
-                else icl_data.split("\n")
-                if isinstance(icl_data, str)
-                else icl_data
+                else icl_data.split("\n") if isinstance(icl_data, str) else icl_data
             )
             train_data = (
                 [train_data]
                 if isinstance(train_data, dict)
-                else train_data.split("\n")
-                if isinstance(train_data, str)
-                else train_data
+                else (
+                    train_data.split("\n")
+                    if isinstance(train_data, str)
+                    else train_data
+                )
             )
             val_data = (
                 [val_data]
                 if isinstance(val_data, dict)
-                else val_data.split("\n")
-                if isinstance(val_data, str)
-                else val_data
+                else val_data.split("\n") if isinstance(val_data, str) else val_data
             )
 
             # Now that validation is stricter, malformed records should be filtered during validation

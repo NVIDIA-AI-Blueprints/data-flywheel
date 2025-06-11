@@ -116,14 +116,18 @@ def tweak_settings(monkeypatch):
     """Provide deterministic test configuration via the global `settings`."""
 
     # --- Data-split parameters (fields are *not* frozen) --------------------
-    monkeypatch.setattr(settings.data_split_config, "min_total_records", 1, raising=False)
+    monkeypatch.setattr(
+        settings.data_split_config, "min_total_records", 1, raising=False
+    )
     monkeypatch.setattr(settings.data_split_config, "random_seed", 42, raising=False)
     monkeypatch.setattr(settings.data_split_config, "eval_size", 1, raising=False)
     monkeypatch.setattr(settings.data_split_config, "val_ratio", 0.25, raising=False)
     monkeypatch.setattr(settings.data_split_config, "limit", 100, raising=False)
 
     # --- NMP namespace (field *is* frozen, so create a new object) ----------
-    new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
+    new_nmp_cfg = settings.nmp_config.model_copy(
+        update={"nmp_namespace": "test-namespace"}
+    )
     monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
 
     yield
@@ -235,7 +239,9 @@ def test_create_datasets(mock_es_client, mock_data_uploader, mock_db, mock_setti
                                 {"role": "assistant", "content": f"Answer {i}"},
                             ]
                         },
-                        "response": {"choices": [{"message": {"content": f"Response {i}"}}]},
+                        "response": {
+                            "choices": [{"message": {"content": f"Response {i}"}}]
+                        },
                     }
                 }
                 for i in range(5)
@@ -250,7 +256,9 @@ def test_create_datasets(mock_es_client, mock_data_uploader, mock_db, mock_setti
                             ]
                         },
                         "response": {
-                            "choices": [{"message": {"content": "Transformer architecture..."}}]
+                            "choices": [
+                                {"message": {"content": "Transformer architecture..."}}
+                            ]
                         },
                     }
                 },
@@ -271,7 +279,9 @@ def test_create_datasets(mock_es_client, mock_data_uploader, mock_db, mock_setti
     assert mock_data_uploader.upload_data.call_count >= 1
 
 
-def test_create_datasets_empty_data(mock_es_client, mock_data_uploader, mock_db, mock_settings):
+def test_create_datasets_empty_data(
+    mock_es_client, mock_data_uploader, mock_db, mock_settings
+):
     """Test creating datasets with empty Elasticsearch response."""
     workload_id = "test-workload"
     flywheel_run_id = str(ObjectId())
@@ -283,11 +293,7 @@ def test_create_datasets_empty_data(mock_es_client, mock_data_uploader, mock_db,
         client_id=client_id,
     )
 
-    mock_es_client.search.return_value = {
-        "hits": {
-            "hits": []  # Empty hits list
-        }
-    }
+    mock_es_client.search.return_value = {"hits": {"hits": []}}  # Empty hits list
 
     with pytest.raises(Exception) as exc_info:
         create_datasets(previous_result)
@@ -354,7 +360,9 @@ def test_create_datasets_empty_data(mock_es_client, mock_data_uploader, mock_db,
         ],
     ],
 )
-def test_initialize_workflow(mock_db, mock_dms_client, nim_configs, llm_as_judge_config):
+def test_initialize_workflow(
+    mock_db, mock_dms_client, nim_configs, llm_as_judge_config
+):
     """Test initializing workflow."""
     workload_id = "test-workload"
     flywheel_run_id = str(ObjectId())
@@ -517,7 +525,10 @@ def test_run_base_eval(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = ObjectId()
 
     # Configure mock evaluator
@@ -525,7 +536,9 @@ def test_run_base_eval(
     mock_evaluator.get_job_uri.return_value = "http://test-uri"
     mock_evaluator.get_evaluation_results.return_value = {
         "tasks": {
-            "llm-as-judge": {"metrics": {"llm-judge": {"scores": {"similarity": {"value": 0.95}}}}}
+            "llm-as-judge": {
+                "metrics": {"llm-judge": {"scores": {"similarity": {"value": 0.95}}}}
+            }
         }
     }
 
@@ -568,7 +581,10 @@ def test_run_icl_eval(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = ObjectId()
 
     # Configure mock evaluator for tool calling evaluation
@@ -630,7 +646,10 @@ def test_run_base_eval_failure(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail
@@ -669,13 +688,18 @@ def test_run_base_eval_results_failure(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail during results retrieval
     mock_evaluator.run_evaluation.return_value = "job-123"
     mock_evaluator.get_job_uri.return_value = "http://test-uri"
-    mock_evaluator.wait_for_evaluation.side_effect = Exception("Timeout waiting for evaluation")
+    mock_evaluator.wait_for_evaluation.side_effect = Exception(
+        "Timeout waiting for evaluation"
+    )
 
     run_base_eval(previous_result)
 
@@ -710,11 +734,16 @@ def test_run_icl_eval_failure(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail
-    mock_evaluator.run_evaluation.side_effect = Exception("Tool calling evaluation failed")
+    mock_evaluator.run_evaluation.side_effect = Exception(
+        "Tool calling evaluation failed"
+    )
 
     run_icl_eval(previous_result)
 
@@ -749,7 +778,10 @@ def test_run_icl_eval_results_failure(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = eval_id
 
     # Configure mock evaluator to fail during results retrieval
@@ -802,7 +834,10 @@ def test_start_customization(mock_db, valid_nim_config):
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_customization.return_value = customization_id
 
     # Mock the settings
@@ -813,15 +848,24 @@ def test_start_customization(mock_db, valid_nim_config):
         # Mock the Customizer
         with patch("src.tasks.tasks.Customizer") as mock_customizer_class:
             mock_customizer = mock_customizer_class.return_value
-            mock_customizer.start_training_job.return_value = ("job-123", "customized-test-model")
+            mock_customizer.start_training_job.return_value = (
+                "job-123",
+                "customized-test-model",
+            )
             mock_customizer.get_job_uri.return_value = "http://test-uri"
 
             # Mock db_manager to prevent actual DB calls
-            with patch("src.lib.flywheel.cancellation.get_db_manager") as mock_db_cancel:
-                mock_db_cancel.return_value.is_flywheel_run_cancelled.return_value = False
+            with patch(
+                "src.lib.flywheel.cancellation.get_db_manager"
+            ) as mock_db_cancel:
+                mock_db_cancel.return_value.is_flywheel_run_cancelled.return_value = (
+                    False
+                )
 
                 # Configure mock wait_for_customization to accept positional arguments
-                mock_customizer.wait_for_customization.return_value = {"status": "completed"}
+                mock_customizer.wait_for_customization.return_value = {
+                    "status": "completed"
+                }
 
                 start_customization(previous_result)
 
@@ -837,7 +881,9 @@ def test_start_customization(mock_db, valid_nim_config):
                 # Verify wait_for_customization was called with the correct arguments
                 mock_customizer.wait_for_customization.assert_called_once()
                 args, kwargs = mock_customizer.wait_for_customization.call_args
-                assert args[0] == "job-123"  # First positional argument should be job_id
+                assert (
+                    args[0] == "job-123"
+                )  # First positional argument should be job_id
                 assert kwargs["flywheel_run_id"] == flywheel_run_id
                 assert kwargs["progress_callback"] is not None
 
@@ -855,7 +901,11 @@ def test_start_customization(mock_db, valid_nim_config):
                     ANY, {"nmp_uri": "http://test-uri", "job_id": ANY}
                 )
                 mock_db.update_customization.assert_any_call(
-                    ANY, {"customized_model": "customized-test-model", "runtime_seconds": ANY}
+                    ANY,
+                    {
+                        "customized_model": "customized-test-model",
+                        "runtime_seconds": ANY,
+                    },
                 )
                 mock_db.update_customization.assert_any_call(
                     ANY,
@@ -886,13 +936,18 @@ def test_start_customization_failure(mock_db, valid_nim_config):
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_customization.return_value = customization_id
 
     # Mock the Customizer to fail
     with patch("src.tasks.tasks.Customizer") as mock_customizer_class:
         mock_customizer = mock_customizer_class.return_value
-        mock_customizer.start_training_job.side_effect = Exception("Training job failed")
+        mock_customizer.start_training_job.side_effect = Exception(
+            "Training job failed"
+        )
 
         start_customization(previous_result)
 
@@ -938,7 +993,10 @@ def test_run_customization_eval(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = ObjectId()
     mock_db.find_customization.return_value = {
         "workload_id": "test-workload",
@@ -950,7 +1008,9 @@ def test_run_customization_eval(
     mock_evaluator.get_job_uri.return_value = "http://test-uri"
     mock_evaluator.get_evaluation_results.return_value = {
         "tasks": {
-            "llm-as-judge": {"metrics": {"llm-judge": {"scores": {"similarity": {"value": 0.95}}}}}
+            "llm-as-judge": {
+                "metrics": {"llm-judge": {"scores": {"similarity": {"value": 0.95}}}}
+            }
         }
     }
 
@@ -1004,7 +1064,10 @@ def test_run_customization_eval_failure(
     )
 
     # Configure DB-helper
-    mock_db.find_nim_run.return_value = {"_id": nim_id, "model_name": valid_nim_config.model_name}
+    mock_db.find_nim_run.return_value = {
+        "_id": nim_id,
+        "model_name": valid_nim_config.model_name,
+    }
     mock_db.insert_evaluation.return_value = eval_id
     mock_db.find_customization.return_value = {
         "workload_id": "test-workload",
@@ -1012,7 +1075,9 @@ def test_run_customization_eval_failure(
     }
 
     # Configure mock evaluator to fail
-    mock_evaluator.run_evaluation.side_effect = Exception("Customization evaluation failed")
+    mock_evaluator.run_evaluation.side_effect = Exception(
+        "Customization evaluation failed"
+    )
 
     run_customization_eval(previous_result)
 
@@ -1027,7 +1092,9 @@ def test_run_customization_eval_failure(
     )
 
 
-def test_shutdown_deployment(mock_db, mock_dms_client, valid_nim_config, make_llm_as_judge_config):
+def test_shutdown_deployment(
+    mock_db, mock_dms_client, valid_nim_config, make_llm_as_judge_config
+):
     """Test shutting down NIM deployment."""
     previous_result = TaskResult(
         status="success",
@@ -1208,7 +1275,9 @@ def test_initialize_workflow_cancellation_success(mock_db, mock_dms_client):
         result = convert_result_to_task_result(result)
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=True)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=True
+        )
 
         # Verify normal initialization proceeded
         assert isinstance(result, TaskResult)
@@ -1273,7 +1342,9 @@ def test_initialize_workflow_cancellation_failure(mock_db, mock_dms_client):
             )
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=True)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=True
+        )
 
         # Verify the exception details
         assert "Flywheel run has been cancelled" in str(exc_info.value)
@@ -1310,7 +1381,9 @@ def test_create_datasets_cancellation(mock_db, mock_es_client, mock_data_uploade
             create_datasets(previous_result)
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=True)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=True
+        )
 
         # Verify that no data processing occurred after cancellation
         mock_es_client.search.assert_not_called()
@@ -1406,7 +1479,9 @@ def test_spin_up_nim_cancellation(mock_db, mock_dms_client, valid_nim_config):
         result = convert_result_to_task_result(result)
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=True)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=True
+        )
 
         # Verify NIM was marked as cancelled
         mock_db.mark_nim_cancelled.assert_called_once_with(
@@ -1452,7 +1527,9 @@ def test_start_customization_cancellation(mock_db, valid_nim_config):
         result = convert_result_to_task_result(result)
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=False)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=False
+        )
 
         # Verify error message in result
         assert result.error is not None
@@ -1496,7 +1573,9 @@ def test_run_generic_eval_cancellation(mock_evaluator, mock_db, valid_nim_config
         result = convert_result_to_task_result(result)
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=False)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=False
+        )
 
         # Verify error message in result
         assert result.error is not None
@@ -1534,7 +1613,9 @@ def test_shutdown_deployment_cancellation(mock_db, mock_dms_client, valid_nim_co
         result = shutdown_deployment(previous_result)
 
         # Verify cancellation was checked
-        mock_check_cancellation.assert_called_once_with(flywheel_run_id, raise_error=False)
+        mock_check_cancellation.assert_called_once_with(
+            flywheel_run_id, raise_error=False
+        )
 
         # Verify NIM was marked as cancelled
         mock_db.mark_nim_cancelled.assert_called_once_with(
@@ -1550,7 +1631,9 @@ def test_shutdown_deployment_cancellation(mock_db, mock_dms_client, valid_nim_co
 
 
 # Test cases for cancellation during waiting periods
-def test_wait_for_llm_as_judge_cancellation_during_deployment_wait(mock_db, mock_dms_client):
+def test_wait_for_llm_as_judge_cancellation_during_deployment_wait(
+    mock_db, mock_dms_client
+):
     """Test wait_for_llm_as_judge when cancellation occurs during wait_for_deployment."""
     flywheel_run_id = str(ObjectId())
     llm_judge_run_id = ObjectId()
@@ -1599,7 +1682,9 @@ def test_wait_for_llm_as_judge_cancellation_during_deployment_wait(mock_db, mock
     assert "Error waiting for LLM as judge" in str(exc_info.value)
 
 
-def test_wait_for_llm_as_judge_cancellation_during_model_sync_wait(mock_db, mock_dms_client):
+def test_wait_for_llm_as_judge_cancellation_during_model_sync_wait(
+    mock_db, mock_dms_client
+):
     """Test wait_for_llm_as_judge when cancellation occurs during wait_for_model_sync."""
     flywheel_run_id = str(ObjectId())
     llm_judge_run_id = ObjectId()
@@ -1756,7 +1841,9 @@ def test_spin_up_nim_cancellation_during_model_sync_wait(
     mock_dms_client.wait_for_model_sync.assert_called_once()
 
 
-def test_start_customization_cancellation_during_wait_for_customization(mock_db, valid_nim_config):
+def test_start_customization_cancellation_during_wait_for_customization(
+    mock_db, valid_nim_config
+):
     """Test start_customization when cancellation occurs during wait_for_customization."""
     flywheel_run_id = str(ObjectId())
     nim_run_id = ObjectId()
@@ -1783,7 +1870,10 @@ def test_start_customization_cancellation_during_wait_for_customization(mock_db,
         mock_settings.training_config = ANY
 
         mock_customizer = mock_customizer_class.return_value
-        mock_customizer.start_training_job.return_value = ("job-123", "customized-test-model")
+        mock_customizer.start_training_job.return_value = (
+            "job-123",
+            "customized-test-model",
+        )
         mock_customizer.get_job_uri.return_value = "http://test-uri"
 
         # Configure wait_for_customization to raise FlywheelCancelledError
@@ -1820,7 +1910,9 @@ def test_start_customization_cancellation_during_wait_for_customization(mock_db,
         )
 
 
-def test_start_customization_cancellation_during_wait_for_model_sync(mock_db, valid_nim_config):
+def test_start_customization_cancellation_during_wait_for_model_sync(
+    mock_db, valid_nim_config
+):
     """Test start_customization when cancellation occurs during wait_for_model_sync."""
     flywheel_run_id = str(ObjectId())
     nim_run_id = ObjectId()
@@ -1847,7 +1939,10 @@ def test_start_customization_cancellation_during_wait_for_model_sync(mock_db, va
         mock_settings.training_config = ANY
 
         mock_customizer = mock_customizer_class.return_value
-        mock_customizer.start_training_job.return_value = ("job-123", "customized-test-model")
+        mock_customizer.start_training_job.return_value = (
+            "job-123",
+            "customized-test-model",
+        )
         mock_customizer.get_job_uri.return_value = "http://test-uri"
 
         # Configure wait_for_customization to succeed but wait_for_model_sync to fail

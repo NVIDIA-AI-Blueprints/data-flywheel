@@ -73,7 +73,9 @@ class Customizer:
             },
         }
 
-        response = requests.post(f"{self.nemo_url}/v1/customization/jobs", json=training_params)
+        response = requests.post(
+            f"{self.nemo_url}/v1/customization/jobs", json=training_params
+        )
 
         if response.status_code != 200:
             msg = f"Failed to start training job. Status: {response.status_code}, Response: {response.text}"
@@ -172,9 +174,7 @@ class Customizer:
                 return {"status": "synced", "model_id": customized_model}
 
             if time.time() - start_time > timeout:
-                msg = (
-                    f"Model {customized_model} did not sync within {timeout} second: {models_data}"
-                )
+                msg = f"Model {customized_model} did not sync within {timeout} second: {models_data}"
                 logger.error(msg)
                 raise TimeoutError(msg)
             # wait before next check
@@ -226,8 +226,12 @@ class Customizer:
                     progress_callback(
                         {
                             "progress": 100.0,
-                            "epochs_completed": status_response.get("epochs_completed", 0),
-                            "steps_completed": status_response.get("steps_completed", 0),
+                            "epochs_completed": status_response.get(
+                                "epochs_completed", 0
+                            ),
+                            "steps_completed": status_response.get(
+                                "steps_completed", 0
+                            ),
                         }
                     )
                 return status_response
@@ -249,7 +253,10 @@ class Customizer:
 
             elif current_status == "running":
                 # Check for resource availability issues in the last status message and exit if found.
-                if status_logs and status_logs[-1].get("message") == "NotEnoughResources":
+                if (
+                    status_logs
+                    and status_logs[-1].get("message") == "NotEnoughResources"
+                ):
                     error_message = f"Job {job_id} failed due to insufficient resources"
                     logger.error(error_message)
                     if progress_callback:
@@ -284,7 +291,10 @@ class Customizer:
                 # Unknown status - just log it
                 if progress_callback:
                     progress_callback(
-                        {"progress": 0.0, "error": f"Unknown job status '{current_status}'"}
+                        {
+                            "progress": 0.0,
+                            "error": f"Unknown job status '{current_status}'",
+                        }
                     )
                 msg = f"Warning: Unknown job status '{current_status}'"
                 logger.error(msg)

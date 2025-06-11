@@ -159,7 +159,9 @@ class JobListItem(BaseModel):
     """Model representing a job in the list of jobs."""
 
     id: str = Field(
-        ..., description="The unique identifier of the job", examples=["65f8a1b2c3d4e5f6a7b8c9d0"]
+        ...,
+        description="The unique identifier of the job",
+        examples=["65f8a1b2c3d4e5f6a7b8c9d0"],
     )
     workload_id: str = Field(
         ...,
@@ -199,7 +201,9 @@ class JobListItem(BaseModel):
 class JobsListResponse(BaseModel):
     """Response model for listing all jobs."""
 
-    jobs: list[JobListItem] = Field(..., description="List of all jobs, both active and completed")
+    jobs: list[JobListItem] = Field(
+        ..., description="List of all jobs, both active and completed"
+    )
 
 
 class Evaluation(BaseModel):
@@ -218,7 +222,9 @@ class Evaluation(BaseModel):
     )
 
     started_at: datetime = Field(
-        ..., description="Timestamp when the evaluation started", examples=["2024-03-15T14:30:00Z"]
+        ...,
+        description="Timestamp when the evaluation started",
+        examples=["2024-03-15T14:30:00Z"],
     )
     finished_at: datetime | None = Field(
         None,
@@ -279,7 +285,9 @@ class Customization(BaseModel):
     epochs_completed: int = Field(
         ..., description="Number of epochs completed", examples=[10], ge=0
     )
-    steps_completed: int = Field(..., description="Number of steps completed", examples=[100], ge=0)
+    steps_completed: int = Field(
+        ..., description="Number of steps completed", examples=[100], ge=0
+    )
     nmp_uri: str | None = Field(
         None,
         description="URI of the customization job in NMP",
@@ -295,7 +303,9 @@ class Customization(BaseModel):
 class NIMResponse(BaseModel):
     """Model representing a NIM and its evaluations."""
 
-    model_name: str = Field(..., description="Name of the NIM model", examples=["gpt-4"])
+    model_name: str = Field(
+        ..., description="Name of the NIM model", examples=["gpt-4"]
+    )
 
     status: NIMRunStatus = Field(
         ...,
@@ -331,8 +341,12 @@ class NIMResponse(BaseModel):
 class LLMJudgeResponse(BaseModel):
     """Model representing a LLM Judge status"""
 
-    model_name: str = Field(..., description="Name of the LLM Judge model", examples=["gpt-4"])
-    type: str = Field(..., description="Type of LLM Judge", examples=["remote", "local"])
+    model_name: str = Field(
+        ..., description="Name of the LLM Judge model", examples=["gpt-4"]
+    )
+    type: str = Field(
+        ..., description="Type of LLM Judge", examples=["remote", "local"]
+    )
 
     deployment_status: DeploymentStatus = Field(
         ..., description="Status of the LLM Judge deployment", examples=["deployed"]
@@ -348,7 +362,9 @@ class JobDetailResponse(BaseModel):
     """Detailed response model for a specific job."""
 
     id: str = Field(
-        ..., description="The unique identifier of the job", examples=["65f8a1b2c3d4e5f6a7b8c9d0"]
+        ...,
+        description="The unique identifier of the job",
+        examples=["65f8a1b2c3d4e5f6a7b8c9d0"],
     )
     workload_id: str = Field(
         ...,
@@ -376,11 +392,17 @@ class JobDetailResponse(BaseModel):
         examples=["2024-03-15T15:30:00Z"],
     )
     num_records: int = Field(
-        ..., description="Number of records processed in this job", examples=[1000], ge=0
+        ...,
+        description="Number of records processed in this job",
+        examples=[1000],
+        ge=0,
     )
-    llm_judge: LLMJudgeResponse | None = Field(None, description="LLM Judge status for this job")
+    llm_judge: LLMJudgeResponse | None = Field(
+        None, description="LLM Judge status for this job"
+    )
     nims: list[NIMResponse] = Field(
-        default_factory=list, description="List of NIMs and their evaluation results for this job"
+        default_factory=list,
+        description="List of NIMs and their evaluation results for this job",
     )
     datasets: list[Dataset] = Field(
         default_factory=list, description="List of datasets used in this job"

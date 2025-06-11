@@ -7,7 +7,9 @@ from src.lib.integration.dataset_creator import DatasetCreator
 class TestDatasetCreator:
     def setup_method(self):
         """Set up test fixtures"""
-        self.split_config = DataSplitConfig(train_split=0.7, val_split=0.2, eval_split=0.1)
+        self.split_config = DataSplitConfig(
+            train_split=0.7, val_split=0.2, eval_split=0.1
+        )
 
         self.dataset_creator = DatasetCreator(
             records=[],
@@ -95,7 +97,9 @@ class TestDatasetCreator:
         assistant_message_with_none = result[0]["messages"][2]
         assert assistant_message_with_none["role"] == "assistant"
         assert assistant_message_with_none["content"] == ""
-        assert "tool_calls" in assistant_message_with_none  # Ensure tool_calls preserved
+        assert (
+            "tool_calls" in assistant_message_with_none
+        )  # Ensure tool_calls preserved
 
         # Assert that empty string content in request was converted to single space
         assistant_message_with_empty = result[0]["messages"][4]

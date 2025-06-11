@@ -88,7 +88,10 @@ class OpenAIFormatValidator:
             for choice in choices:
                 message = choice.get("message", {})
                 # Check for tool_calls or finish_reason indicating tool calls
-                if message.get("tool_calls") or choice.get("finish_reason") == "tool_calls":
+                if (
+                    message.get("tool_calls")
+                    or choice.get("finish_reason") == "tool_calls"
+                ):
                     return True
             return False
         except Exception:
@@ -113,7 +116,9 @@ class OpenAIFormatValidator:
                                 # Parse JSON string to object
                                 function["arguments"] = json.loads(arguments)
                             except json.JSONDecodeError:
-                                logger.warning(f"Failed to parse function arguments: {arguments}")
+                                logger.warning(
+                                    f"Failed to parse function arguments: {arguments}"
+                                )
                                 return False  # Indicate parsing failure
             return True  # Parsing succeeded or no parsing needed
         except (KeyError, TypeError, AttributeError) as e:

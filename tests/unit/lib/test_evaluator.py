@@ -26,7 +26,9 @@ from src.lib.nemo.evaluator import Evaluator
 @pytest.fixture
 def evaluator() -> Evaluator:
     with patch.dict("os.environ", {"NEMO_URL": "http://test-nemo-url"}):
-        return Evaluator(judge_model_config=settings.llm_judge_config.judge_model_config())
+        return Evaluator(
+            judge_model_config=settings.llm_judge_config.judge_model_config()
+        )
 
 
 @pytest.fixture
@@ -48,7 +50,9 @@ def sample_flywheel_run_id():
     return str(ObjectId())
 
 
-def test_wait_for_evaluation_created_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+def test_wait_for_evaluation_created_state(
+    evaluator: Evaluator, sample_flywheel_run_id
+) -> None:
     """Test handling of created state in wait_for_evaluation"""
     job_id = "test-job-id"
 
@@ -74,7 +78,9 @@ def test_wait_for_evaluation_created_state(evaluator: Evaluator, sample_flywheel
                 )
 
 
-def test_wait_for_evaluation_running_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+def test_wait_for_evaluation_running_state(
+    evaluator: Evaluator, sample_flywheel_run_id
+) -> None:
     """Test handling of running state in wait_for_evaluation"""
     job_id = "test-job-id"
 
@@ -100,7 +106,9 @@ def test_wait_for_evaluation_running_state(evaluator: Evaluator, sample_flywheel
                 )
 
 
-def test_wait_for_evaluation_completed_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+def test_wait_for_evaluation_completed_state(
+    evaluator: Evaluator, sample_flywheel_run_id
+) -> None:
     """Test handling of completed state in wait_for_evaluation"""
     job_id = "test-job-id"
 
@@ -126,7 +134,9 @@ def test_wait_for_evaluation_completed_state(evaluator: Evaluator, sample_flywhe
             assert result["status"] == "completed"
 
 
-def test_wait_for_evaluation_error_state(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+def test_wait_for_evaluation_error_state(
+    evaluator: Evaluator, sample_flywheel_run_id
+) -> None:
     """Test handling of error state in wait_for_evaluation"""
     job_id = "test-job-id"
 
@@ -153,7 +163,9 @@ def test_wait_for_evaluation_error_state(evaluator: Evaluator, sample_flywheel_r
             assert "Test error" in str(exc_info.value)
 
 
-def test_wait_for_evaluation_timeout(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+def test_wait_for_evaluation_timeout(
+    evaluator: Evaluator, sample_flywheel_run_id
+) -> None:
     """Test timeout in wait_for_evaluation"""
     job_id = "test-job-id"
 
@@ -179,7 +191,9 @@ def test_wait_for_evaluation_timeout(evaluator: Evaluator, sample_flywheel_run_i
                 )
 
 
-def test_wait_for_evaluation_none_progress(evaluator: Evaluator, sample_flywheel_run_id) -> None:
+def test_wait_for_evaluation_none_progress(
+    evaluator: Evaluator, sample_flywheel_run_id
+) -> None:
     """Test handling of None progress in wait_for_evaluation"""
     job_id = "test-job-id"
 
@@ -242,7 +256,10 @@ def test_evaluator_uses_remote_judge_config(monkeypatch):
     # Should use the remote config dict
     assert isinstance(judge_model_config, dict)
     assert evaluator.judge_model_config["api_endpoint"]["url"] == remote_cfg.url
-    assert evaluator.judge_model_config["api_endpoint"]["model_id"] == remote_cfg.model_name
+    assert (
+        evaluator.judge_model_config["api_endpoint"]["model_id"]
+        == remote_cfg.model_name
+    )
     assert evaluator.judge_model_config["api_endpoint"]["api_key"] == remote_cfg.api_key
 
 
@@ -368,7 +385,8 @@ class TestRunEvaluation:
 
             if test_params["should_raise_error"]:
                 with pytest.raises(
-                    test_params["expected_error"], match=test_params["expected_error_msg"]
+                    test_params["expected_error"],
+                    match=test_params["expected_error_msg"],
                 ):
                     evaluator_instance.run_evaluation(
                         dataset_name=test_params["dataset_name"],
@@ -380,7 +398,9 @@ class TestRunEvaluation:
                     )
                 return
 
-            config_method = getattr(evaluator_instance, test_params["expected_config_method"])
+            config_method = getattr(
+                evaluator_instance, test_params["expected_config_method"]
+            )
             expected_config_payload = config_method(
                 dataset_name=test_params["dataset_name"],
                 test_file=test_params["test_file"],
@@ -421,7 +441,9 @@ def test_run_evaluation_limit_propagation(evaluator_instance, mock_response, lim
     # Mock the network request
     with patch("src.lib.nemo.evaluator.requests.post", return_value=mock_response):
         # Mock the config method
-        with patch.object(evaluator_instance, "get_llm_as_judge_config") as mock_config_method:
+        with patch.object(
+            evaluator_instance, "get_llm_as_judge_config"
+        ) as mock_config_method:
             # Set up mock return value
             mock_config_method.return_value = {"type": "mock-config"}
 

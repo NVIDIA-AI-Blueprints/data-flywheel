@@ -99,11 +99,19 @@ class TaskDBManager:
         """
         self._flywheel_runs.update_one(
             {"_id": ObjectId(flywheel_run_id), "error": None},
-            {"$set": {"finished_at": finished_at, "status": FlywheelRunStatus.COMPLETED}},
+            {
+                "$set": {
+                    "finished_at": finished_at,
+                    "status": FlywheelRunStatus.COMPLETED,
+                }
+            },
         )
 
     def mark_flywheel_run_error(
-        self, flywheel_run_id: str | ObjectId, error_msg: str, finished_at: datetime | None = None
+        self,
+        flywheel_run_id: str | ObjectId,
+        error_msg: str,
+        finished_at: datetime | None = None,
     ) -> None:
         """Save an *error* status onto a FlywheelRun document.
 
@@ -143,7 +151,9 @@ class TaskDBManager:
 
     def is_flywheel_run_cancelled(self, flywheel_run_id: str | ObjectId) -> bool:
         """Check if a FlywheelRun is cancelled."""
-        doc = self._flywheel_runs.find_one({"_id": ObjectId(flywheel_run_id)}, {"status": 1})
+        doc = self._flywheel_runs.find_one(
+            {"_id": ObjectId(flywheel_run_id)}, {"status": 1}
+        )
         return doc and doc.get("status") == FlywheelRunStatus.CANCELLED
 
     # ---------------------------------------------------------------------
@@ -171,12 +181,20 @@ class TaskDBManager:
         self._nims.update_one({"_id": nim_id}, {"$set": update})
 
     def update_nim_deployment_status(
-        self, nim_id: ObjectId, deployment_status: DeploymentStatus, runtime_seconds: float
+        self,
+        nim_id: ObjectId,
+        deployment_status: DeploymentStatus,
+        runtime_seconds: float,
     ) -> None:
         """Update the deployment status of a NIM run."""
         self._nims.update_one(
             {"_id": nim_id},
-            {"$set": {"deployment_status": deployment_status, "runtime_seconds": runtime_seconds}},
+            {
+                "$set": {
+                    "deployment_status": deployment_status,
+                    "runtime_seconds": runtime_seconds,
+                }
+            },
         )
 
     def mark_nim_completed(self, nim_id: ObjectId, started_at: datetime) -> None:
@@ -200,7 +218,9 @@ class TaskDBManager:
             },
         )
 
-    def mark_nim_cancelled(self, nim_id: ObjectId, error_msg: str | None = None) -> None:
+    def mark_nim_cancelled(
+        self, nim_id: ObjectId, error_msg: str | None = None
+    ) -> None:
         """Mark a NIM run as cancelled.
 
         Only update if there is no error on the NIM run document.
@@ -238,14 +258,19 @@ class TaskDBManager:
             },
         )
 
-    def find_nim_run(self, flywheel_run_id: str, model_name: str) -> Mapping[str, Any] | None:
+    def find_nim_run(
+        self, flywheel_run_id: str, model_name: str
+    ) -> Mapping[str, Any] | None:
         """Find a NIM run by its associated flywheel run ID and model name."""
         return self._nims.find_one(
             {"flywheel_run_id": ObjectId(flywheel_run_id), "model_name": model_name}
         )
 
     def mark_all_nims_status(
-        self, flywheel_run_id: str | ObjectId, status: NIMRunStatus, error_msg: str | None = None
+        self,
+        flywheel_run_id: str | ObjectId,
+        status: NIMRunStatus,
+        error_msg: str | None = None,
     ) -> None:
         """Mark all NIMs associated with a flywheel run as failed.
 
@@ -276,7 +301,9 @@ class TaskDBManager:
         self._evaluations.insert_one(evaluation.to_mongo())
         return evaluation.id  # type: ignore[return-value]
 
-    def update_evaluation(self, eval_id: ObjectId, update_fields: dict[str, Any]) -> None:
+    def update_evaluation(
+        self, eval_id: ObjectId, update_fields: dict[str, Any]
+    ) -> None:
         """Update a NIMEvaluation."""
         self._evaluations.update_one({"_id": eval_id}, {"$set": update_fields})
 
@@ -287,7 +314,9 @@ class TaskDBManager:
         self._customizations.insert_one(customization.to_mongo())
         return customization.id  # type: ignore[return-value]
 
-    def update_customization(self, custom_id: ObjectId, update_fields: dict[str, Any]) -> None:
+    def update_customization(
+        self, custom_id: ObjectId, update_fields: dict[str, Any]
+    ) -> None:
         """Update a NIMCustomization."""
         self._customizations.update_one({"_id": custom_id}, {"$set": update_fields})
 
@@ -326,9 +355,13 @@ class TaskDBManager:
             },
         )
 
-    def find_llm_judge_run(self, flywheel_run_id: str | ObjectId) -> Mapping[str, Any] | None:
+    def find_llm_judge_run(
+        self, flywheel_run_id: str | ObjectId
+    ) -> Mapping[str, Any] | None:
         """Find an LLM judge run by its associated flywheel run ID."""
-        return self.llm_judge_runs.find_one({"flywheel_run_id": ObjectId(flywheel_run_id)})
+        return self.llm_judge_runs.find_one(
+            {"flywheel_run_id": ObjectId(flywheel_run_id)}
+        )
 
     # ------------------------------------------------------------------
     # Job deletion helpers
@@ -350,10 +383,15 @@ class TaskDBManager:
         Returns:
             List of flywheel run documents with PENDING or RUNNING status
         """
-        running_statuses = [FlywheelRunStatus.PENDING.value, FlywheelRunStatus.RUNNING.value]
+        running_statuses = [
+            FlywheelRunStatus.PENDING.value,
+            FlywheelRunStatus.RUNNING.value,
+        ]
         return list(self._flywheel_runs.find({"status": {"$in": running_statuses}}))
 
-    def find_running_nims_for_flywheel(self, flywheel_run_id: ObjectId) -> list[Mapping[str, Any]]:
+    def find_running_nims_for_flywheel(
+        self, flywheel_run_id: ObjectId
+    ) -> list[Mapping[str, Any]]:
         """Find all NIMs with RUNNING or PENDING status for a flywheel run.
 
         Args:

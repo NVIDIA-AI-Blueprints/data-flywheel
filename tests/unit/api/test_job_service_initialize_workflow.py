@@ -83,7 +83,9 @@ class TestJobServiceInitializeWorkflow:
             return TaskResult(**result)
         return result
 
-    def test_initialize_workflow_success(self, mock_db, workflow_params, test_db_success):
+    def test_initialize_workflow_success(
+        self, mock_db, workflow_params, test_db_success
+    ):
         """Test successful workflow initialization and validate in job details"""
         with patch("src.api.job_service.get_db", return_value=mock_db):
             # Setup mock responses
@@ -92,7 +94,9 @@ class TestJobServiceInitializeWorkflow:
             llm_judge_id = ObjectId()
 
             mock_db.nims.insert_many.return_value = {"inserted_ids": [nim1_id, nim2_id]}
-            mock_db.llm_judge_runs.insert_one.return_value = {"inserted_id": llm_judge_id}
+            mock_db.llm_judge_runs.insert_one.return_value = {
+                "inserted_id": llm_judge_id
+            }
 
             # Initialize workflow
             result = initialize_workflow(
@@ -119,7 +123,9 @@ class TestJobServiceInitializeWorkflow:
             # Use the validation helper
             validate_job_response_success(job_json)
 
-    def test_initialize_workflow_nims_only(self, mock_db, workflow_params, test_db_no_llm_judge):
+    def test_initialize_workflow_nims_only(
+        self, mock_db, workflow_params, test_db_no_llm_judge
+    ):
         """Test workflow initialization with NIMs only (no LLM Judge)"""
         with patch("src.api.job_service.get_db", return_value=mock_db):
             # Setup mock responses
@@ -293,7 +299,9 @@ class TestJobServiceInitializeWorkflow:
                 # Validate that the job failed
                 assert job_json["status"] == "failed"
 
-    def test_initialize_workflow_with_output_dataset_prefix(self, mock_db, workflow_params):
+    def test_initialize_workflow_with_output_dataset_prefix(
+        self, mock_db, workflow_params
+    ):
         """Test workflow initialization with output_dataset_prefix parameter"""
         with patch("src.api.job_service.get_db", return_value=mock_db):
             # Setup mock responses
@@ -301,7 +309,9 @@ class TestJobServiceInitializeWorkflow:
             llm_judge_id = ObjectId()
 
             mock_db.nims.insert_many.return_value = {"inserted_ids": [nim_id]}
-            mock_db.llm_judge_runs.insert_one.return_value = {"inserted_id": llm_judge_id}
+            mock_db.llm_judge_runs.insert_one.return_value = {
+                "inserted_id": llm_judge_id
+            }
 
             # Initialize workflow with prefix
             result = initialize_workflow(

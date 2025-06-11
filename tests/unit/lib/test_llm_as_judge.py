@@ -56,7 +56,9 @@ def test_spin_up_llm_judge_deploys_when_not_deployed(monkeypatch):
 
     # Patch the DMSClient constructor inside the evaluator so every instantiation
     # returns our dummy instance
-    monkeypatch.setattr("src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client)
+    monkeypatch.setattr(
+        "src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client
+    )
 
     # Act
     result = LLMAsJudge().spin_up_llm_judge()
@@ -76,7 +78,9 @@ def test_spin_up_llm_judge_skips_when_already_deployed(monkeypatch):
     dummy_client.is_deployed.return_value = True
     dummy_client.deploy_model = MagicMock()
 
-    monkeypatch.setattr("src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client)
+    monkeypatch.setattr(
+        "src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client
+    )
 
     result = LLMAsJudge().spin_up_llm_judge()
 
@@ -94,7 +98,9 @@ def test_spin_up_llm_judge_propagates_deployment_errors(monkeypatch):
     dummy_client.is_deployed.return_value = False
     dummy_client.deploy_model.side_effect = RuntimeError("boom")
 
-    monkeypatch.setattr("src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client)
+    monkeypatch.setattr(
+        "src.lib.nemo.llm_as_judge.DMSClient", lambda *_, **__: dummy_client
+    )
 
     with pytest.raises(RuntimeError, match="boom"):
         LLMAsJudge().spin_up_llm_judge()

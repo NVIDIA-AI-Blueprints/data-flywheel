@@ -77,7 +77,9 @@ class TestCreateDatasetsGenericWorkload:
 
         # Verify database was updated with correct record count
         db_doc = mongo_db.flywheel_runs.find_one({"_id": ObjectId(flywheel_run_id)})
-        assert db_doc["num_records"] == settings.data_split_config.limit  # 10 from our config
+        assert (
+            db_doc["num_records"] == settings.data_split_config.limit
+        )  # 10 from our config
 
         # Verify datasets in database
         assert len(db_doc["datasets"]) == 3
@@ -117,9 +119,10 @@ class TestCreateDatasetsGenericWorkload:
         # Create mixed dataset
         mixed_records = (
             valid_generic_records[:valid_count]
-            + (invalid_format_records * (invalid_count // len(invalid_format_records) + 1))[
-                :invalid_count
-            ]
+            + (
+                invalid_format_records
+                * (invalid_count // len(invalid_format_records) + 1)
+            )[:invalid_count]
         )
 
         mock_record_exporter.get_records.return_value = mixed_records
@@ -178,9 +181,10 @@ class TestCreateDatasetsGenericWorkload:
         # Create mixed dataset
         mixed_records = (
             valid_generic_records[:valid_count]
-            + (invalid_format_records * (invalid_count // len(invalid_format_records) + 1))[
-                :invalid_count
-            ]
+            + (
+                invalid_format_records
+                * (invalid_count // len(invalid_format_records) + 1)
+            )[:invalid_count]
         )
 
         mock_record_exporter.get_records.return_value = mixed_records
@@ -475,7 +479,9 @@ class TestCreateDatasetsToolCallingWorkload:
                 assert task_result.workload_type == WorkloadClassification.TOOL_CALLING
 
                 # Verify database update
-                db_doc = mongo_db.flywheel_runs.find_one({"_id": ObjectId(flywheel_run_id)})
+                db_doc = mongo_db.flywheel_runs.find_one(
+                    {"_id": ObjectId(flywheel_run_id)}
+                )
                 assert db_doc["num_records"] == settings.data_split_config.limit
             else:
                 with pytest.raises(ValueError) as exc_info:
@@ -571,14 +577,18 @@ class TestCreateDatasetsErrorHandling:
         )
 
         # Capture initial state
-        initial_db_doc = mongo_db.flywheel_runs.find_one({"_id": ObjectId(flywheel_run_id)})
+        initial_db_doc = mongo_db.flywheel_runs.find_one(
+            {"_id": ObjectId(flywheel_run_id)}
+        )
         initial_num_records = initial_db_doc.get("num_records", 0)
 
         with pytest.raises(ValueError):
             create_datasets(previous_result)
 
         # Verify database wasn't updated
-        final_db_doc = mongo_db.flywheel_runs.find_one({"_id": ObjectId(flywheel_run_id)})
+        final_db_doc = mongo_db.flywheel_runs.find_one(
+            {"_id": ObjectId(flywheel_run_id)}
+        )
         assert final_db_doc.get("num_records", 0) == initial_num_records
         assert final_db_doc.get("datasets", []) == initial_db_doc.get("datasets", [])
 
@@ -614,7 +624,9 @@ class TestCreateDatasetsErrorHandling:
 
         # Set invalid configuration
         monkeypatch.setattr(settings.data_split_config, "limit", limit_setting)
-        monkeypatch.setattr(settings.data_split_config, "min_total_records", min_total_records)
+        monkeypatch.setattr(
+            settings.data_split_config, "min_total_records", min_total_records
+        )
 
         mock_record_exporter.get_records.return_value = valid_generic_records
 
@@ -636,8 +648,20 @@ class TestCreateDatasetsDataSplitValidation:
     @pytest.mark.parametrize(
         "limit,eval_size,val_ratio,expected_eval,expected_train",
         [
-            (10, 2, 0.25, 2, 6),  # Standard split: 10 -> 2 eval, 8 remaining -> 6 train, 2 val
-            (15, 3, 0.2, 3, 9),  # Different ratios: 15 -> 3 eval, 12 remaining -> 9 train, 3 val
+            (
+                10,
+                2,
+                0.25,
+                2,
+                6,
+            ),  # Standard split: 10 -> 2 eval, 8 remaining -> 6 train, 2 val
+            (
+                15,
+                3,
+                0.2,
+                3,
+                9,
+            ),  # Different ratios: 15 -> 3 eval, 12 remaining -> 9 train, 3 val
         ],
     )
     def test_create_datasets_split_configurations(
@@ -661,7 +685,9 @@ class TestCreateDatasetsDataSplitValidation:
         flywheel_run_id, mongo_db = create_flywheel_run_generic
 
         # Ensure we have enough valid records
-        extended_records = valid_generic_records * (limit // len(valid_generic_records) + 1)
+        extended_records = valid_generic_records * (
+            limit // len(valid_generic_records) + 1
+        )
 
         # Make records unique to avoid deduplication
         for i, record in enumerate(extended_records[: limit + 5]):
