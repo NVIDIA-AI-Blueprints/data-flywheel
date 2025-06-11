@@ -197,7 +197,7 @@ Load test data using the provided scripts:
 
 ```bash
 uv run python src/scripts/load_test_data.py \
-  --file aiva_primary_assistant_dataset.jsonl --client-id dev
+  --file aiva_primary_assistant_dataset.jsonl
 ```
 
 #### Custom Data
@@ -254,8 +254,8 @@ To submit your own custom dataset, provide the loader with a file in [JSON Lines
       }
     }]
   },
-  "workload_id": "aiva_1",
-  "client_id": "dev",
+  "workload_id": "primary_assistant",
+  "client_id": "aiva-1",
   "timestamp": 1746138417
 }
 ```
@@ -281,7 +281,7 @@ Now that you've got the Data Flywheel running and loaded with data, you can star
 ```bash
 curl -X POST http://localhost:8000/api/jobs \
 -H "Content-Type: application/json" \
--d '{"workload_id": "aiva_1", "client_id": "dev"}'
+-d '{"workload_id": "primary_assistant", "client_id": "aiva-1"}'
 ```
 
 #### Create Job with Custom Data Split Configuration
@@ -292,8 +292,8 @@ You can customize the data split configuration by passing a `data_split_config` 
 curl -X POST http://localhost:8000/api/jobs \
 -H "Content-Type: application/json" \
 -d '{
-  "workload_id": "aiva_1",
-  "client_id": "dev",
+  "workload_id": "primary_assistant",
+  "client_id": "aiva-1",
   "data_split_config": {
     "eval_size": 30,
     "val_ratio": 0.15,
@@ -383,8 +383,8 @@ When querying a job, you'll receive a JSON response with the following structure
 ```json
 {
  "id": "65f8a1b2c3d4e5f6a7b8c9d0",          // Unique job identifier
- "workload_id": "aiva_1",               // Workload being processed
- "client_id": "dev",                // Client identifier
+ "workload_id": "primary_assistant",               // Workload being processed
+ "client_id": "aiva-1",                // Client identifier
  "status": "running",                        // Current job status
  "started_at": "2024-03-15T14:30:00Z",      // Job start timestamp
  "finished_at": "2024-03-15T15:30:00Z",      // Job completion timestamp (if finished)

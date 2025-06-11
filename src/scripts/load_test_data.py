@@ -140,9 +140,7 @@ if __name__ == "__main__":
     )
     parser.add_argument("--workload-id", help="Unique identifier for the workload")
     parser.add_argument("--file", help="Input JSONL file path (defaults based on workload-type)")
-    parser.add_argument(
-        "--client-id", default="load_test_data_script", help="Optional client identifier"
-    )
+    parser.add_argument("--client-id", help="Optional client identifier")
     parser.add_argument("--index-name", default=ES_COLLECTION_NAME, help="Optional index name")
 
     args = parser.parse_args()
