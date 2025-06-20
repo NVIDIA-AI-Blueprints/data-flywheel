@@ -57,11 +57,11 @@ Authenticate with NGC using `NGC login`. For detailed instructions, see the [NGC
 
 ### 2. Deploy NMP
 
-To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#beginner-tutorial-prerequisites) beginner tutorial. These instructions launch NMP using a local Minikube cluster.
+To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/latest/get-started/setup/index.html) beginner tutorial. These instructions launch NMP using a local Minikube cluster.
 
 **Use Manual Installation Only**
 
-For the Data Flywheel Blueprint, use the [Install Manually](https://docs.nvidia.com/nemo/microservices/latest/get-started/platform-prereq.html#installing-manually) option. The deployment scripts option should be avoided as it deploys models outside the namespace of the Data Flywheel and can cause conflict.
+For the Data Flywheel Blueprint, use the [Install Manually](https://docs.nvidia.com/nemo/microservices/latest/get-started/setup/minikube-manual.html) option. The deployment scripts option should be avoided as it deploys models outside the namespace of the Data Flywheel and can cause conflict.
 
 Enable customization for the models
 
