@@ -46,6 +46,8 @@ spec:
               value: {{ .Values.foundationalFlywheelServer.deployments.api.env.MONGODB_DB | quote }}
             - name: COMPOSE_PROFILES
               value: {{ .Values.profile.mlflow.COMPOSE_PROFILES | quote }}
+            - name: ES_COLLECTION_NAME
+              value: {{ .Values.foundationalFlywheelServer.deployments.api.env.ES_COLLECTION_NAME | quote }}
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:

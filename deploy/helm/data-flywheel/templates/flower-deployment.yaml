@@ -37,6 +37,8 @@ spec:
               value: {{ .Values.foundationalFlywheelServer.deployments.flower.env.MONGODB_URL | quote }}
             - name: MONGODB_DB
               value: {{ .Values.foundationalFlywheelServer.deployments.flower.env.MONGODB_DB | quote }}
+            - name: ES_COLLECTION_NAME
+              value: {{ .Values.foundationalFlywheelServer.deployments.flower.env.ES_COLLECTION_NAME | quote }}
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:

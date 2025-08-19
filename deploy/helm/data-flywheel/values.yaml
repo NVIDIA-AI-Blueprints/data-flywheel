@@ -192,6 +192,7 @@ foundationalFlywheelServer:
         REDIS_URL: "redis://df-redis-master:6379/0"
         MONGODB_URL: "mongodb://df-mongodb:27017"
         MONGODB_DB: "flywheel"
+        ES_COLLECTION_NAME: "flywheel"
       resources:
         requests:
           memory: "1Gi"
@@ -227,6 +228,7 @@ foundationalFlywheelServer:
         REDIS_URL: "redis://df-redis-master:6379/0"
         MONGODB_URL: "mongodb://df-mongodb:27017"
         MONGODB_DB: "flywheel"
+        ES_COLLECTION_NAME: "flywheel"
       resources:
         requests:
           memory: "10Gi"
@@ -259,6 +261,7 @@ foundationalFlywheelServer:
         REDIS_URL: "redis://df-redis-master:6379/0"
         MONGODB_URL: "mongodb://df-mongodb:27017"
         MONGODB_DB: "flywheel"
+        ES_COLLECTION_NAME: "flywheel"
       resources:
         requests:
           memory: "1Gi"
@@ -317,6 +320,7 @@ foundationalFlywheelServer:
         REDIS_URL: "redis://df-redis-master:6379/0"
         MONGODB_URL: "mongodb://df-mongodb:27017"
         MONGODB_DB: "flywheel"
+        ES_COLLECTION_NAME: "flywheel"
       resources:
         requests:
           memory: "1Gi"
