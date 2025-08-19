@@ -167,6 +167,7 @@ class NIMEvaluation(BaseModel):
     runtime_seconds: float
     progress: float  # Progress percentage (0-100)
     nmp_uri: str | None = None
+    mlflow_uri: str | None = None  # MLflow run URL for this evaluation
     error: str | None = None
 
     model_config = {
@@ -189,13 +190,14 @@ class NIMEvaluation(BaseModel):
             "runtime_seconds": self.runtime_seconds,
             "progress": self.progress,
             "nmp_uri": self.nmp_uri,
+            "mlflow_uri": self.mlflow_uri,
         }
 
     @classmethod
     def from_mongo(cls, doc: dict[str, Any]) -> "NIMEvaluation":
         """Create NIMEvaluation from MongoDB document."""
         return cls(
-            id=doc["_id"],
+            _id=doc["_id"],
             nim_id=doc["nim_id"],
             eval_type=doc["eval_type"],
             scores=doc["scores"],
@@ -204,6 +206,7 @@ class NIMEvaluation(BaseModel):
             runtime_seconds=doc["runtime_seconds"],
             progress=doc["progress"],
             nmp_uri=doc.get("nmp_uri"),
+            mlflow_uri=doc.get("mlflow_uri"),
         )
 
 
@@ -245,7 +248,7 @@ class NIMRun(BaseModel):
     id: ObjectId | None = Field(default_factory=ObjectId, alias="_id")
     flywheel_run_id: ObjectId
     model_name: str
-    started_at: datetime
+    started_at: datetime | None = None
     finished_at: datetime | None = None
     runtime_seconds: float
     evaluations: list[NIMEvaluation] = []
@@ -272,7 +275,7 @@ class LLMJudgeRun(BaseModel):
     id: ObjectId | None = Field(default_factory=ObjectId, alias="_id")
     flywheel_run_id: ObjectId
     model_name: str
-    type: str
+    deployment_type: str
     deployment_status: DeploymentStatus | None = None
     model_config = {"arbitrary_types_allowed": True, "json_encoders": {ObjectId: str}}
     error: str | None = None

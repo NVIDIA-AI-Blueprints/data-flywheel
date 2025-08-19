@@ -38,7 +38,7 @@ Check out the following example notebooks to learn how to optimize LLMs using a 
 
 ### Hardware Requirement
 
-To complete this tutorial, you'll need a system with atleast two A100 or H100 (80GB) NVIDIA GPUs, which will be used as follows:
+To complete this tutorial, you'll need a system with at least two A100 or H100 (80GB) NVIDIA GPUs, which will be used as follows:
 
 - **Fine-tuning:** At least one GPU is required for fine-tuning a model (e.g.`meta/llama-3.2-1B-instruct`, `meta/llama-3.2-3B-instruct` or `meta/llama-3.1-8B-instruct`).
 - **Inference:** At least one GPU is required for deploying the corresponding NIM for evaluation.

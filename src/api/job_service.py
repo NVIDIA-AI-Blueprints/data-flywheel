@@ -34,7 +34,7 @@ from src.api.schemas import (
     NIMRunStatus,
 )
 from src.log_utils import setup_logging
-from src.tasks.tasks import delete_job_resources
+from src.tasks.tasks import cancel_job_resources, delete_job_resources
 
 logger = setup_logging("data_flywheel.job_service")
 
@@ -124,6 +124,7 @@ def get_job_details(job_id: str) -> JobDetailResponse:
                 runtime_seconds=eval["runtime_seconds"],
                 progress=eval["progress"],
                 nmp_uri=eval["nmp_uri"],
+                mlflow_uri=eval.get("mlflow_uri", None),
                 error=eval.get("error", None),
             )
         )
@@ -143,6 +144,7 @@ def get_job_details(job_id: str) -> JobDetailResponse:
                 epochs_completed=custom["epochs_completed"],
                 steps_completed=custom["steps_completed"],
                 nmp_uri=custom["nmp_uri"],
+                customized_model=custom.get("customized_model", None),
                 error=custom.get("error", None),
             )
         )
@@ -152,7 +154,7 @@ def get_job_details(job_id: str) -> JobDetailResponse:
     if llm_judge:
         llm_judge_response = LLMJudgeResponse(
             model_name=llm_judge["model_name"],
-            type=llm_judge["type"],
+            type=llm_judge["deployment_type"],
             deployment_status=DeploymentStatus(
                 llm_judge["deployment_status"] or DeploymentStatus.PENDING
             ),
@@ -287,13 +289,8 @@ def cancel_job(job_id: str) -> JobCancelResponse:
                 message="Job is already cancelled.",
             )
 
-        # Mark the flywheel run as cancelled
-        get_db_manager().mark_flywheel_run_cancelled(
-            job_object_id,
-            error_msg="Job cancelled by user",
-        )
-
-        logger.info(f"Successfully cancelled job with ID: {job_id}")
+        # Fire off the Celery task with validated job_id
+        cancel_job_resources.delay(str(job_object_id))
 
         return JobCancelResponse(
             id=str(job_object_id),

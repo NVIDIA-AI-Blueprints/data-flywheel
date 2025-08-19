@@ -31,7 +31,6 @@ class DeploymentStatus(str, Enum):
     PENDING = "pending"
     RUNNING = "running"
     CANCELLED = "cancelled"
-    CANCELLING = "cancelling"
     FAILED = "failed"
     COMPLETED = "completed"
     READY = "ready"
@@ -122,7 +121,7 @@ class JobDeleteResponse(BaseModel):
     message: str = Field(
         ...,
         description="Human-readable message about the job status",
-        examples=["NIM workflow started"],
+        examples=["Job deletion started."],
     )
 
 
@@ -243,6 +242,11 @@ class Evaluation(BaseModel):
         description="URI of the evaluation job in NMP",
         examples=["https://nmp.host/v1/evaluation/jobs/eval-123"],
     )
+    mlflow_uri: str | None = Field(
+        None,
+        description="URI of the MLflow experiment for this evaluation",
+        examples=["http://localhost:5000/#/experiments/123"],
+    )
     error: str | None = Field(
         None,
         description="Error message if the evaluation failed",
@@ -284,6 +288,11 @@ class Customization(BaseModel):
         None,
         description="URI of the customization job in NMP",
         examples=["https://nmp.host/v1/customization/jobs/custom-123"],
+    )
+    customized_model: str | None = Field(
+        None,
+        description="Name of the customized model",
+        examples=["customized-gpt-4"],
     )
     error: str | None = Field(
         None,

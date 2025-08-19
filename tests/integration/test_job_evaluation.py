@@ -24,6 +24,115 @@ from fastapi.testclient import TestClient
 from src.api.db import get_db
 from src.api.models import EvalType
 from src.api.schemas import DeploymentStatus
+from src.log_utils import setup_logging
+
+
+@pytest.fixture
+def workload_id() -> str:
+    """Generate a unique workload ID for each test."""
+    return f"test-workload-{uuid.uuid4()}"
+
+
+@pytest.fixture
+def client_id() -> str:
+    """Generate a unique client ID for each test."""
+    return f"test-client-{uuid.uuid4()}"
+
+
+@pytest.fixture
+def flywheel_run_id() -> str:
+    """Generate a unique flywheel run ID for each test."""
+    return str(ObjectId())
+
+
+@pytest.fixture
+def load_test_data_fixture(workload_id: str, client_id: str) -> Generator:
+    """Fixture to load test data for each test and clean it up afterward."""
+
+    from src.lib.integration.es_client import ES_COLLECTION_NAME, get_es_client
+    from src.scripts.load_test_data import load_data_to_elasticsearch
+
+    logger = setup_logging("data_flywheel.test_fixture")
+
+    # Load test data for this specific test
+    load_data_to_elasticsearch(workload_id, client_id, file_path="aiva-test.jsonl")
+
+    es = get_es_client()
+    es.indices.refresh(index=ES_COLLECTION_NAME)
+
+    # Verify that data is actually loaded (retry mechanism for test isolation)
+    import time
+
+    max_retries = 10
+    retry_count = 0
+    while retry_count < max_retries:
+        # Query for the data to ensure it's available
+        query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"match": {"workload_id": workload_id}},
+                        {"match": {"client_id": client_id}},
+                    ]
+                }
+            }
+        }
+        result = es.search(index=ES_COLLECTION_NAME, body=query)
+        if result["hits"]["total"]["value"] > 0:
+            logger.info(
+                f"Data verification successful: found {result['hits']['total']['value']} records"
+            )
+            break
+
+        # Debug: check what's actually in the index
+        all_docs_query = {"query": {"match_all": {}}, "size": 5}
+        all_docs_result = es.search(index=ES_COLLECTION_NAME, body=all_docs_query)
+        logger.debug(f"Total docs in index: {all_docs_result['hits']['total']['value']}")
+        if all_docs_result["hits"]["hits"]:
+            sample_doc = all_docs_result["hits"]["hits"][0]["_source"]
+            logger.debug(f"Sample document: {sample_doc}")
+
+        retry_count += 1
+        if retry_count < max_retries:
+            logger.warning(
+                f"Data not yet available (attempt {retry_count}/{max_retries}), waiting..."
+            )
+            time.sleep(0.5)
+            es.indices.refresh(index=ES_COLLECTION_NAME)
+
+    if retry_count >= max_retries:
+        logger.error(f"Failed to load test data after {max_retries} attempts")
+        raise RuntimeError(
+            f"Test data not available for workload_id={workload_id}, client_id={client_id}"
+        )
+
+    yield  # Test runs here
+
+    # Cleanup: Delete all records for this test's workload_id and client_id
+    try:
+        # Use match queries for deletion as well (more flexible)
+        delete_query = {
+            "query": {
+                "bool": {
+                    "must": [
+                        {"match": {"workload_id": workload_id}},
+                        {"match": {"client_id": client_id}},
+                    ]
+                }
+            }
+        }
+
+        result = es.delete_by_query(index=ES_COLLECTION_NAME, body=delete_query)
+        logger.info(
+            f"Cleaned up {result.get('deleted', 0)} test records for workload_id={workload_id}, client_id={client_id}"
+        )
+
+        # Refresh the index to make the deletions immediately visible
+        es.indices.refresh(index=ES_COLLECTION_NAME)
+
+    except Exception as e:
+        logger.warning(f"Failed to clean up test data: {e}")
+        # Don't fail the test if cleanup fails
 
 
 @pytest.fixture
@@ -151,7 +260,10 @@ def mock_external_services() -> Generator[dict[str, MagicMock], None, None]:
 
         # Mock customizer responses
         def mock_customizer_requests_side_effect(method, url, **kwargs):
-            if method == "post" and "/v1/customization/jobs" in url:
+            if method == "post" and "/v1/customization/configs" in url:
+                # Mock the create_customizer_config endpoint
+                return MagicMock(status_code=200, json=lambda: {"name": "test-config"})
+            elif method == "post" and "/v1/customization/jobs" in url:
                 job_id = f"custom-job-{uuid.uuid4()}"
                 return MagicMock(
                     status_code=200,
@@ -231,19 +343,21 @@ def cleanup_test_data():
 
 
 @pytest.mark.integration
+@pytest.mark.workflow
 def test_full_job_evaluation_flow(
     test_client: TestClient,
     mock_external_services: dict[str, MagicMock],
     client_id: str,
-    test_workload_id: str,
-    cleanup_test_data,
+    workload_id: str,
+    flywheel_run_id: str,
+    cleanup_test_data: Generator,
     load_test_data_fixture,
     validation_test_settings,
 ):
     """Test the complete job evaluation flow from POST /jobs to completion"""
     # 1. Create a new job - since tasks run synchronously, it will complete immediately
     response = test_client.post(
-        "/api/jobs", json={"workload_id": test_workload_id, "client_id": client_id}
+        "/api/jobs", json={"workload_id": workload_id, "client_id": client_id}
     )
     assert response.status_code == 200
     job_data = response.json()
@@ -266,7 +380,7 @@ def test_full_job_evaluation_flow(
 
     # Verify the job details
     assert job_details["id"] == job_id
-    assert job_details["workload_id"] == test_workload_id
+    assert job_details["workload_id"] == workload_id
     assert job_details["status"] in ["completed", "running"]
     assert job_details["started_at"] is not None
     assert job_details["num_records"] > 0
@@ -290,7 +404,7 @@ def test_full_job_evaluation_flow(
     # Verify flywheel run
     flywheel_run = db.flywheel_runs.find_one({"_id": ObjectId(job_id)})
     assert flywheel_run is not None
-    assert flywheel_run["workload_id"] == test_workload_id
+    assert flywheel_run["workload_id"] == workload_id
     assert flywheel_run["num_records"] > 0
     assert flywheel_run["finished_at"] is not None
 

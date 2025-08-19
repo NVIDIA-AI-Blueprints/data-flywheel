@@ -1,0 +1,504 @@
+# Default values for data-flywheel.
+# This is a YAML-formatted file.
+# Declare variables to be passed into your templates.
+
+namespace: "nv-nvidia-blueprint-data-flywheel"
+
+# Deployment profile settings
+# - For production profile, kibana and Data Flywheel flower server are disabled
+#   For non-production profiles, kibana and Data Flywheel flower server are enabled
+# - For mlflow profile (default), COMPOSE_PROFILES is "mlflow"
+# - For non-mlflow profile, COMPOSE_PROFILES is "" (leave blank)
+profile:
+  production:
+    enabled: true
+  mlflow:
+    COMPOSE_PROFILES: "mlflow"
+
+# imagePullSecrets used for pulling candidate NIMs
+imagePullSecrets:
+  - name: nvcrimagepullsecret
+    registry: nvcr.io
+    username: $oauthtoken
+    password: <your_ngc_api_key>
+# ngcApiSecret used for pulling nemo customizer and model access
+ngcApiSecret:
+  name: "ngc-api"
+  key: "NGC_API_KEY"
+# nvidiaApiSecret used for accessing remote LLM judge
+nvidiaApiSecret:
+  name: "nvidia-api"
+  key: "NVIDIA_API_KEY"
+# hfSecret used in data-flywheel server
+hfSecret:
+  name: "hf-secret"
+  key: "HF_TOKEN"
+llmJudgeSecret:
+  name: "llm-judge-api"
+  key: "LLM_JUDGE_API_KEY"
+embSecret:
+  name: "emb-api"
+  key: "EMB_API_KEY"
+
+# Secrets values - set these during deployment
+# (for example: helm install data-flywheel . \
+#   --set secrets.ngcApiKey=$NGC_API_KEY \
+#   --set secrets.hfToken=$HF_TOKEN)
+# Note: if you want not to set those via command line during helm install like above, you must create those Kubernetes secrets manually first
+secrets:
+  ngcApiKey: ""  # Set this to your NGC API key
+  nvidiaApiKey: "" # Set this to your NVIDIA API key
+  hfToken: "" # Set this to your HF Token
+  llmJudgeApiKey: "" # Set this to your LLM Judge API key
+  embApiKey: "" # Set this to your Embedding API key
+
+# volcano version which is used in the nemo-microservices-helm-chart
+volcano:
+  enabled: true
+  version: "1.9.0"
+
+# Elasticsearch configuration
+elasticsearch:
+  enabled: true
+  fullnameOverride: df-elasticsearch
+  security:
+    enabled: false
+  master:
+    masterOnly: false
+    replicaCount: 1
+    resources:
+      limits:
+        memory: 4Gi
+      requests:
+        memory: 4Gi
+    heapSize: 2g
+  # disable the other dedicated roles that Bitnami enables by default
+  data:
+    replicaCount: 0
+  ingest:
+    replicaCount: 0
+  coordinating:
+    replicaCount: 0
+  metrics:
+    enabled: false
+  # ── Elasticsearch.yml overrides ───
+  extraConfig:
+    "network.host": "0.0.0.0"
+    "xpack.security.enabled": "false"
+    "xpack.security.enrollment.enabled": "false"
+    "xpack.security.transport.ssl.enabled": "false"
+    "xpack.security.http.ssl.enabled": "false"
+    "cluster.routing.allocation.disk.watermark.low": "99%"
+    "cluster.routing.allocation.disk.watermark.high": "99%"
+    "cluster.routing.allocation.disk.watermark.flood_stage": "99%"
+    "logger.org.elasticsearch": "ERROR"
+    "logger.org.elasticsearch.cluster": "ERROR"
+    "logger.org.elasticsearch.discovery": "ERROR"
+    "logger.org.elasticsearch.gateway": "ERROR"
+    "logger.org.elasticsearch.indices": "ERROR"
+    "logger.org.elasticsearch.node": "ERROR"
+    "logger.org.elasticsearch.transport": "ERROR"
+    "action.destructive_requires_name": "false"
+
+# Kibana configuration
+# (Kibana is enabled when current profile is not production)
+kibana:
+  fullnameOverride: df-kibana
+  image:
+    repository: docker.elastic.co/kibana/kibana
+    tag: 8.12.1
+  service:
+    type: NodePort
+    port: 5601
+  resources:
+    requests:
+      cpu: 1000m
+      memory: 4Gi
+    limits:
+      cpu: 2000m
+      memory: 8Gi
+  env:
+    ELASTICSEARCH_HOSTS: http://df-elasticsearch:9200
+    ELASTICSEARCH_REQUEST_TIMEOUT: 120000
+    ELASTICSEARCH_STARTUP_TIMEOUT: 120000
+    logging.root.level: off
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "1"
+      ephemeral-storage: "2Gi"
+    limits:
+      memory: "2Gi"
+      cpu: "2"
+      ephemeral-storage: "5Gi"
+
+# MongoDB configuration
+mongodb:
+  enabled: true
+  fullnameOverride: "df-mongodb"
+  auth:
+    enabled: false
+  extraEnvVars:
+    - name: MONGODB_LOG_LEVEL
+      value: "error"
+    - name: MONGODB_DB
+      value: "flywheel"
+  extraInitContainers:
+    - name: init-mongodb
+      image: busybox
+      command: ["sh", "-c", "mkdir -p /data/db"]
+      volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+  command: ["mongod", "--bind_ip_all", "--quiet", "--setParameter=diagnosticDataCollectionEnabled=false", "--setParameter=logComponentVerbosity={ \"network\": { \"verbosity\": 0 }, \"command\": { \"verbosity\": 0 }, \"control\": { \"verbosity\": 0 } }", "--dbpath=/data/db"]
+  extraVolumeMounts:
+    - name: mongodb-data
+      mountPath: /data/db
+  extraVolumes:
+    - name: mongodb-data
+      emptyDir: {}
+
+# Redis configuration
+redis:
+  enabled: true
+  auth:
+    enabled: false
+  fullnameOverride: "df-redis"
+  command: ["redis-server", "--appendonly", "yes"]
+  master:
+    disableCommands: []
+  replicas:
+    disableCommands: []
+
+# Data Flywheel server configuration
+foundationalFlywheelServer:
+  image:
+    repository: nvcr.io/nvstaging/blueprint/foundational-flywheel-server
+    tag: "25.08"
+  imagePullSecrets:
+    - name: nvcrimagepullsecret
+  # Deployments of the foundational flywheel server
+  deployments:
+    # api is the main service that handles the requests and returns the responses
+    api:
+      # api is enabled by default and must be enabled to use the flywheel server
+      enabled: true
+      fullnameOverride: "df-api"
+      service:
+        type: NodePort
+        port: 8000
+      env:
+        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
+        REDIS_URL: "redis://df-redis-master:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb:27017"
+        MONGODB_DB: "flywheel"
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "1"
+          ephemeral-storage: "10Gi"
+        limits:
+          memory: "2Gi"
+          cpu: "2"
+          ephemeral-storage: "20Gi"
+      command:
+        - "uv"
+        - "run"
+        - "uvicorn"
+        - "src.app:app"
+        - "--host"
+        - "0.0.0.0"
+        - "--port"
+        - "8000"
+      dependsOn:
+        - name: df-elasticsearch-master
+          port: 9200
+        - name: df-redis-master
+          port: 6379
+        - name: df-mongodb
+          port: 27017
+    # celeryWorker is the worker that handles the tasks
+    celeryWorker:
+      # celeryWorker is enabled by default and must be enabled to use the flywheel server
+      enabled: true
+      fullnameOverride: "df-celery-worker"
+      env:
+        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
+        REDIS_URL: "redis://df-redis-master:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb:27017"
+        MONGODB_DB: "flywheel"
+      resources:
+        requests:
+          memory: "10Gi"
+          cpu: "4"
+          ephemeral-storage: "10Gi"
+        limits:
+          memory: "20Gi"
+          cpu: "8"
+          ephemeral-storage: "20Gi"
+      command:
+        - "uv"
+        - "run"
+        - "celery"
+        - "-A"
+        - "src.tasks.cli:celery_app"
+        - "worker"
+        - "--loglevel=info"
+        - "--concurrency=50"
+        - "--queues=celery"
+        - "-n"
+        - "main_worker@%h"
+        - "--purge"
+    # celeryParentWorker is the parent worker that orchestrates the tasks to celeryWorker
+    celeryParentWorker:
+      # celeryParentWorker is enabled by default and must be enabled to use the flywheel server
+      enabled: true
+      fullnameOverride: "df-celery-parent-worker"
+      env:
+        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
+        REDIS_URL: "redis://df-redis-master:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb:27017"
+        MONGODB_DB: "flywheel"
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "1"
+          ephemeral-storage: "10Gi"
+        limits:
+          memory: "2Gi"
+          cpu: "2"
+          ephemeral-storage: "20Gi"
+      command:
+        - "uv"
+        - "run"
+        - "celery"
+        - "-A"
+        - "src.tasks.cli:celery_app"
+        - "worker"
+        - "--loglevel=info"
+        - "--concurrency=1"
+        - "--queues=parent_queue"
+        - "-n"
+        - "parent_worker@%h"
+        - "--purge"
+    # mlflowServer is the server that handles the mlflow server
+    # (Check if mlflow is enabled in the section `profile.mlflow.COMPOSE_PROFILES`)
+    mlflow:
+      fullnameOverride: "df-mlflow"
+      image: ghcr.io/mlflow/mlflow:v2.22.0
+      service:
+        type: NodePort
+        port: 5000
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "500m"
+          ephemeral-storage: "2Gi"
+        limits:
+          memory: "2Gi"
+          cpu: "2"
+          ephemeral-storage: "5Gi"
+      command:
+        - "mlflow"
+        - "server"
+        - "--host"
+        - "0.0.0.0"
+        - "--port"
+        - "5000"
+    # flower is the celery flower server that shows the celery tasks
+    # (flower is enabled when current profile is not production)
+    flower:
+      fullnameOverride: "df-flower"
+      service:
+        type: NodePort
+        port: 5555
+      env:
+        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
+        REDIS_URL: "redis://df-redis-master:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb:27017"
+        MONGODB_DB: "flywheel"
+      resources:
+        requests:
+          memory: "1Gi"
+          cpu: "1"
+          ephemeral-storage: "2Gi"
+        limits:
+          memory: "2Gi"
+          cpu: "2"
+          ephemeral-storage: "5Gi"
+      command:
+        - "uv"
+        - "run"
+        - "celery"
+        - "-A"
+        - "src.tasks.tasks"
+        - "flower"
+        - "--port=5555"
+  # Configuration file content of Data Flywheel to override the one in the Docker image
+  # (optionally change values according to your demand)
+  config:
+    nmp_config:
+      nemo_base_url: "http://nemo.test"
+      nim_base_url: "http://nim.test"
+      datastore_base_url: "http://data-store.test"
+
+      # All resources created in NeMo Microservices Platform (NMP) will be namespaced to this value
+      nmp_namespace: "dfwbp"
+
+    # Logging configuration
+    logging_config:
+      level: "INFO"  # Options: DEBUG, INFO, WARNING, ERROR, CRITICAL
+
+    # MLflow configuration
+    # Note: MLflow is controlled by COMPOSE_PROFILES environment variable
+    # Set COMPOSE_PROFILES=mlflow to enable both the MLflow service and configuration
+    mlflow_config:
+      tracking_uri: "http://df-mlflow-service:5000"
+      experiment_name_prefix: "data-flywheel"
+      artifact_location: "./mlruns"
+
+    llm_judge_config:
+      # deployment_type: "remote"
+      # url: "http://0.0.0.0:9022/v1/chat/completions"
+      # model_name: "meta/llama-3.3-70b-instruct"
+      # To spin up a dedicated NIM in your cluster, comment the above uncomment and fill these:
+      deployment_type: "local"
+      model_name: "meta/llama-3.3-70b-instruct"
+      context_length: 32768
+      gpus: 4
+      pvc_size: 25Gi
+      tag: "1.8.5"
+
+    nims:
+      - model_name: "meta/llama-3.2-1b-instruct"
+        model_type: "llm"
+        context_length: 8192
+        gpus: 1
+        pvc_size: 25Gi
+        tag: "1.8.3"
+        customization_enabled: true
+        customizer_configs:
+          target: "meta/llama-3.2-1b-instruct@2.0"
+          gpus: 1
+          max_seq_length: 8192
+
+      # - model_name: "meta/llama-3.2-3b-instruct"
+      #   model_type: "llm"
+      #   context_length: 32768
+      #   gpus: 1
+      #   pvc_size: 25Gi
+      #   tag: "1.8.3"
+      #   customization_enabled: false
+
+      # - model_name: "meta/llama-3.1-8b-instruct"
+      #   model_type: "llm"
+      #   context_length: 32768
+      #   gpus: 1
+      #   pvc_size: 25Gi
+      #   tag: "1.8.3"
+      #   customization_enabled: true
+      #   customizer_configs:
+      #     target: "meta/llama-3.1-8b-instruct@2.0"
+      #     gpus: 1
+      #     max_seq_length: 8192
+
+      # - model_name: "meta/llama-3.3-70b-instruct"
+      #   model_type: "llm"
+      #   context_length: 32768
+      #   gpus: 4
+      #   pvc_size: 25Gi
+      #   tag: "1.8.5"
+
+    # Data split config:
+    # train, val, eval split sizes and ratios
+    data_split_config:
+      eval_size: 100
+      val_ratio: 0.1
+      min_total_records: 50
+      random_seed: null
+      limit: 1000 # null means no limit
+      parse_function_arguments: true # parse function arguments to JSON objects for tool calling records
+
+    # ICL config:
+    # max context length, reserved tokens, max examples, min examples
+    # example_selection: "uniform_distribution" or "semantic_similarity"
+    icl_config:
+      max_context_length: 32768
+      reserved_tokens: 4096
+      max_examples: 3
+      min_examples: 1
+      example_selection: "semantic_similarity"
+      similarity_config:
+        relevance_ratio: 0.7
+        embedding_nim_config:
+          # deployment_type: "remote"
+          # url: "http://0.0.0.0:9022/v1/embeddings"
+          # model_name: "nvidia/llama-3.2-nv-embedqa-1b-v2"
+          deployment_type: "local"
+          model_name: "nvidia/llama-3.2-nv-embedqa-1b-v2"
+          context_length: 32768
+          gpus: 1
+          pvc_size: "25Gi"
+          tag: "1.9.0"
+
+
+    # Training config:
+    # Customization config with default values
+    training_config:
+      training_type: "sft"
+      finetuning_type: "lora"
+      epochs: 2
+      batch_size: 16
+      learning_rate: 0.0001
+
+    # LoRA config:
+    # adapter dimension, adapter dropout
+    lora_config:
+      adapter_dim: 32
+      adapter_dropout: 0.1
+
+# Nemo Microservices configuration
+nemo-microservices-helm-chart:
+  enabled: true
+
+  existingSecret: ngc-api
+  existingImagePullSecret: nvcrimagepullsecret
+
+  data-store:
+    external:
+      rootUrl: http://data-store.test
+      domain: data-store.test
+    persistence:
+      size: 2Gi
+
+  guardrails:
+    env:
+      FETCH_NIM_APP_MODELS: "True"
+
+  ingress:
+    enabled: true
+
+  customizer:
+    enabled: true
+    modelsStorage:
+      storageClassName: standard
+    customizationTargets:
+      overrideExistingTargets: true
+      targets:
+        meta/llama-3.2-1b-instruct@2.0:
+          enabled: true
+        meta/llama-3.2-3b-instruct@2.0:
+          enabled: true
+        meta/llama-3.1-8b-instruct@2.0:
+          enabled: true
+    customizerConfig:
+      training:
+        pvc:
+          storageClass: "standard"
+          volumeAccessMode: "ReadWriteOnce"
+    opentelemetry-collector:
+      enabled: false
+
+  deployment-management:
+    deployments:
+      defaultStorageClass: standard

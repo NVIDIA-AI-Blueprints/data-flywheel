@@ -19,6 +19,9 @@ from src.log_utils import setup_logging
 
 logger = setup_logging("data_flywheel.openai_format_validator")
 
+# Limits to at most N tool properties
+LIMIT_TOOL_PROPERTIES = 8
+
 
 class OpenAIFormatValidator:
     """
@@ -33,6 +36,7 @@ class OpenAIFormatValidator:
         Checks:
         - Has request and response fields
         - Request has non-empty messages list
+        - Tool definitions don't exceed property limit (WAR for NIM bug)
         - Response has non-empty choices list
         - Each choice has a message field
 
@@ -56,6 +60,11 @@ class OpenAIFormatValidator:
             # Check messages list is not empty
             if len(request["messages"]) == 0:
                 return False
+
+            # Check tool properties limit if tools are present (WAR for NIM bug)
+            if "tools" in request:
+                if not self._validate_tool_properties_limit(record):
+                    return False
 
             # Check response has choices
             response = record["response"]
@@ -87,11 +96,37 @@ class OpenAIFormatValidator:
             choices = record.get("response", {}).get("choices", [])
             for choice in choices:
                 message = choice.get("message", {})
-                # Check for tool_calls or finish_reason indicating tool calls
-                if message.get("tool_calls") or choice.get("finish_reason") == "tool_calls":
+                tool_calls = message.get("tool_calls")
+
+                # Check for tool_calls and validate each tool call has type: "function"
+                if tool_calls:
+                    for tool_call in tool_calls:
+                        if "type" not in tool_call or tool_call.get("type") != "function":
+                            return False
                     return True
             return False
         except Exception:
+            return False
+
+    def _validate_tool_properties_limit(self, record: dict[str, Any]) -> bool:
+        """Validate that tool definitions don't exceed property count limit.
+
+        This is a WAR for a known bug with tool calling in NIM.
+        """
+        try:
+            request_tools = record.get("request", {}).get("tools", [])
+            for tool in request_tools:
+                tool_function = tool.get("function", {})
+                parameters = tool_function.get("parameters", {})
+                properties = parameters.get("properties", {})
+                if len(properties) > LIMIT_TOOL_PROPERTIES:
+                    logger.warning(
+                        f"Tool function has {len(properties)} properties, exceeding limit of {LIMIT_TOOL_PROPERTIES}"
+                    )
+                    return False
+            return True
+        except (KeyError, TypeError, AttributeError) as e:
+            logger.warning(f"Error validating tool properties: {e}")
             return False
 
     def _parse_function_arguments_to_json(self, record: dict[str, Any]) -> bool:

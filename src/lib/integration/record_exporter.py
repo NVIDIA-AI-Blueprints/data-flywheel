@@ -1,5 +1,3 @@
-import json
-
 from elasticsearch import Elasticsearch
 
 from src.config import DataSplitConfig
@@ -19,6 +17,7 @@ class RecordExporter:
         self, client_id: str, workload_id: str, split_config: DataSplitConfig
     ) -> list[dict]:
         logger.info(f"Pulling data from Elasticsearch for workload {workload_id}")
+
         # Define the search query
         search_query = {
             "query": {
@@ -30,37 +29,64 @@ class RecordExporter:
                 }
             },
             "sort": [{"timestamp": {"order": "desc"}}],
-            "size": split_config.limit * 2,  # fetch more as some might get dropped in validation
         }
 
-        # Execute the search query
-        response = self.es_client.search(index=ES_COLLECTION_NAME, body=search_query)
+        # Use scroll API for large datasets
+        max_records = split_config.limit * 2
+        scroll_size = min(1000, max_records)  # Process in chunks of 1000
 
-        # Check if any records were found
-        if not response["hits"]["hits"]:
-            msg = f"No records found for the given client_id {client_id} and workload_id {workload_id}"
-            logger.error(msg)
-            raise ValueError(msg)
+        # Initial search with scroll
+        response = self.es_client.search(
+            index=ES_COLLECTION_NAME,
+            body=search_query,
+            scroll="2m",  # Keep scroll context for 2 minutes
+            size=scroll_size,
+        )
 
-        # Extract the records
-        records = [hit["_source"] for hit in response["hits"]["hits"]]
+        records = []
+
+        try:
+            # Extract records from initial response first
+            hits = response["hits"]["hits"]
+            records.extend([hit["_source"] for hit in hits])
+
+            # Check scroll_id after processing initial hits
+            scroll_id = response.get("_scroll_id")
+            if scroll_id is None:
+                logger.warning(
+                    "No scroll_id in initial response, cannot continue scrolling but collected initial batch"
+                )
+                return records  # Return what we have and exit early
+
+            # Continue scrolling until we have enough records or no more data
+            while len(hits) > 0 and len(records) < max_records:
+                response = self.es_client.scroll(scroll_id=scroll_id, scroll="2m")
+                hits = response["hits"]["hits"]
+
+                # Process hits first, even if scroll context might be lost
+                remaining_needed = max_records - len(records)
+                new_records = [hit["_source"] for hit in hits[:remaining_needed]]
+                records.extend(new_records)
+
+                # Check scroll_id after processing hits
+                scroll_id = response.get("_scroll_id")
+                if scroll_id is None:
+                    logger.warning(
+                        "Scroll context lost after processing current batch, exiting scroll loop"
+                    )
+                    break
+        except Exception as e:
+            logger.error(f"Error pulling data from Elasticsearch: {e}")
+            raise e
+        finally:
+            # Clear the scroll context - always executed even on failure
+            if scroll_id:
+                try:
+                    self.es_client.clear_scroll(scroll_id=scroll_id)
+                except Exception as e:
+                    logger.warning(f"Failed to clear scroll context: {e}")
+
         logger.info(
             f"Found {len(records)} records for client_id {client_id} and workload_id {workload_id}"
         )
-
-        # Deduplicate records based on request.messages and response.choices
-        unique_records = {}
-        for record in records:
-            # Convert dictionaries to JSON strings for hashing
-            messages_str = json.dumps(record.get("request", {}).get("messages", []), sort_keys=True)
-            choices_str = json.dumps(record.get("response", {}).get("choices", []), sort_keys=True)
-            key = (messages_str, choices_str)
-            if key not in unique_records:
-                unique_records[key] = record
-
-        # Update records with deduplicated records
-        records = list(unique_records.values())
-
-        logger.info(f"Deduplicated down to {len(records)} records for workload {workload_id}")
-
         return records

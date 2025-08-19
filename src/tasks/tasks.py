@@ -38,7 +38,7 @@ from src.api.models import (
     WorkloadClassification,
 )
 from src.api.schemas import DeploymentStatus
-from src.config import DataSplitConfig, NIMConfig, settings
+from src.config import DataSplitConfig, EmbeddingConfig, NIMConfig, settings
 from src.lib.flywheel.cancellation import FlywheelCancelledError, check_cancellation
 from src.lib.flywheel.cleanup_manager import CleanupManager
 from src.lib.flywheel.job_manager import FlywheelJobManager
@@ -46,6 +46,8 @@ from src.lib.flywheel.util import (
     identify_workload_type,
 )
 from src.lib.integration.dataset_creator import DatasetCreator
+from src.lib.integration.es_client import delete_embeddings_index, get_es_client
+from src.lib.integration.mlflow_client import MLflowClient
 from src.lib.integration.record_exporter import RecordExporter
 from src.lib.nemo.customizer import Customizer
 from src.lib.nemo.dms_client import DMSClient
@@ -137,7 +139,7 @@ def initialize_workflow(
     llm_judge_run = LLMJudgeRun(
         flywheel_run_id=ObjectId(flywheel_run_id),
         model_name=llm_as_judge_cfg.model_name,
-        type=llm_as_judge_cfg.type,
+        deployment_type=llm_as_judge_cfg.deployment_type,
         deployment_status=(
             DeploymentStatus.READY if llm_as_judge_cfg.is_remote else DeploymentStatus.CREATED
         ),
@@ -149,14 +151,12 @@ def initialize_workflow(
     # Create NIM runs for each NIM in settings
     for nim in settings.nims:
         nim_config = NIMConfig(**nim.model_dump())
-
         # Create NIM run in the nims collection
-        start_time = datetime.utcnow()
         nim_run = NIMRun(
             flywheel_run_id=ObjectId(flywheel_run_id),
             model_name=nim_config.model_name,
             evaluations=[],
-            started_at=start_time,
+            started_at=None,
             finished_at=None,  # Will be updated when evaluations complete
             runtime_seconds=0,  # Will be updated when evaluations complete
             status=NIMRunStatus.PENDING,
@@ -188,6 +188,12 @@ def create_datasets(previous_result: TaskResult) -> TaskResult:
     # This is a quirk of celery, we need to assert the types here
     # https://github.com/celery/celery/blob/main/examples/pydantic/tasks.py
     assert isinstance(previous_result, TaskResult)
+    index_name = None
+
+    # Extract parameters from previous result
+    workload_id = previous_result.workload_id
+    flywheel_run_id = previous_result.flywheel_run_id
+    client_id = previous_result.client_id
 
     try:
         # Handle Celery serialization - convert dict to TaskResult if needed
@@ -195,11 +201,6 @@ def create_datasets(previous_result: TaskResult) -> TaskResult:
             previous_result = TaskResult(**previous_result)  # type: ignore
 
         _check_cancellation(previous_result.flywheel_run_id, raise_error=True)
-
-        # Extract parameters from previous result
-        workload_id = previous_result.workload_id
-        flywheel_run_id = previous_result.flywheel_run_id
-        client_id = previous_result.client_id
 
         # Use custom data split config if provided, otherwise use default
         split_config = (
@@ -219,11 +220,12 @@ def create_datasets(previous_result: TaskResult) -> TaskResult:
 
         # The dataset creator is used to create the datasets.
         # This validates to ensures that the datasets are created in the correct format for the evaluation and customization.
-        datasets = DatasetCreator(
+        index_name, datasets = DatasetCreator(
             records,
             flywheel_run_id,
             "",
             workload_id,  # Using empty prefix for now
+            client_id,
             split_config=split_config,  # Pass the split config to DatasetCreator
         ).create_datasets(workload_type)
 
@@ -237,7 +239,7 @@ def create_datasets(previous_result: TaskResult) -> TaskResult:
         logger.error(error_msg)
         # Update flywheel run with error via the DB manager
         db_manager.mark_flywheel_run_error(
-            flywheel_run_id, error_msg, finished_at=datetime.utcnow()
+            previous_result.flywheel_run_id, error_msg, finished_at=datetime.utcnow()
         )
         # Update all the NIM runs to error
         status = (
@@ -246,6 +248,31 @@ def create_datasets(previous_result: TaskResult) -> TaskResult:
         db_manager.mark_all_nims_status(previous_result.flywheel_run_id, status, error_msg=str(e))
         # Return a TaskResult so that downstream tasks can gracefully short-circuit
         raise e
+    finally:
+        # shutdown the deployment after creating the datasets
+        if settings.icl_config.example_selection == "semantic_similarity":
+            # cleanup: remove the embedding index
+            if index_name:
+                es_client = get_es_client()
+                delete_embeddings_index(es_client, index_name)
+            if (
+                settings.icl_config.similarity_config.embedding_nim_config.deployment_type
+                == "local"
+            ):
+                # shutdown the deployment if any error occurs
+                nim_config = EmbeddingConfig(
+                    **settings.icl_config.similarity_config.embedding_nim_config.model_dump()
+                )
+                dms_client = DMSClient(nmp_config=settings.nmp_config, nim=nim_config)
+                logger.info(f"Shutting down the embedding NIM: {nim_config.model_name}")
+                try:
+                    dms_client.shutdown_deployment()
+                except Exception as e:
+                    logger.error(
+                        f"Error shutting down the embedding NIM {nim_config.model_name}: {e}"
+                    )
+                    previous_result.error = str(e)
+                    raise e
 
 
 @celery_app.task(name="tasks.wait_for_llm_as_judge", pydantic=True)
@@ -263,14 +290,14 @@ def wait_for_llm_as_judge(previous_result: TaskResult) -> TaskResult:
     llm_as_judge_cfg = previous_result.llm_judge_config
     llm_judge_run = LLMJudgeRun(**db_manager.find_llm_judge_run(previous_result.flywheel_run_id))
 
-    if llm_as_judge_cfg.is_remote:
-        logger.info("Remote LLM Judge will be used")
-        return previous_result
-
     try:
-        # Check for cancellation at the beginning
+        # Check for cancellation at the beginning - this should happen regardless of deployment type
         # If the run is cancelled, we need to raise an error and stop the workflow.
         _check_cancellation(previous_result.flywheel_run_id, raise_error=True)
+
+        if llm_as_judge_cfg.is_remote:
+            logger.info("Remote LLM Judge will be used")
+            return previous_result
 
         # Update LLM judge deployment status to pending
         db_manager.update_llm_judge_deployment_status(llm_judge_run.id, DeploymentStatus.PENDING)
@@ -300,7 +327,13 @@ def wait_for_llm_as_judge(previous_result: TaskResult) -> TaskResult:
         # we need to mark the flywheel run and all the NIMs as error and raise an exception to stop the workflow.
         error_msg = f"Error waiting for LLM as judge: {e!s}"
         logger.error(error_msg)
-        db_manager.mark_llm_judge_error(llm_judge_run.id, error_msg)
+
+        # Handle LLM judge cancellation vs failure properly
+        if isinstance(e, FlywheelCancelledError):
+            db_manager.mark_llm_judge_cancelled(previous_result.flywheel_run_id, error_msg)
+        else:
+            db_manager.mark_llm_judge_error(llm_judge_run.id, error_msg)
+
         # Update flywheel run with error via the DB manager
         db_manager.mark_flywheel_run_error(
             previous_result.flywheel_run_id, error_msg, finished_at=datetime.utcnow()
@@ -341,13 +374,12 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
     # This is the NIM run that will be used to run the evaluation.
     # It is fetched from the database using the flywheel run id and the model name.
     # The NIM run is updated with the status of the NIM deployment.
-    nim_run = NIMRun(
-        **db_manager.find_nim_run(
-            previous_result.flywheel_run_id,
-            nim_config.model_name,
-        )
+    nim_run = db_manager.find_nim_run(
+        previous_result.flywheel_run_id,
+        nim_config.model_name,
     )
-    start_time = nim_run.started_at
+    if nim_run:
+        nim_run = NIMRun(**nim_run)
 
     try:
         # Check for cancellation at the beginning
@@ -360,6 +392,7 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
 
         dms_client = DMSClient(nmp_config=settings.nmp_config, nim=nim_config)
 
+        start_time = datetime.utcnow()
         if not dms_client.is_deployed():
             logger.info(f"Deploying NIM {nim_config.model_name}")
 
@@ -367,14 +400,19 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
                 dms_client.deploy_model()
             except Exception as e:
                 logger.error(f"Error deploying NIM {nim_config.model_name}: {e}")
-                db_manager.mark_nim_error(
-                    nim_run.id,
-                    error_msg=str(e),
-                )
+                if nim_run:
+                    db_manager.mark_nim_error(
+                        nim_run.id,
+                        error_msg=str(e),
+                    )
                 previous_result.error = str(e)
                 return previous_result
         else:
             logger.info(f"NIM {nim_config.model_name} is already deployed")
+
+        # Set started_at once, deployment has been initiated or NIM was already deployed.
+        if nim_run:
+            db_manager.set_nim_started(nim_run.id, start_time)
 
         # This is the progress callback for the NIM deployment.
         # It updates the NIM run with the status of the NIM deployment.
@@ -392,7 +430,7 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
         # This will exit if the run is cancelled. This is handled in the DMSClient wait_for_deployment method.
         dms_client.wait_for_deployment(
             flywheel_run_id=previous_result.flywheel_run_id,
-            progress_callback=progress_callback,
+            progress_callback=progress_callback if nim_run else None,
         )
         # wait for the NIM model to be synced
         # This will exit if the run is cancelled. This is handled in the DMSClient wait_for_model_sync method.
@@ -402,11 +440,12 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
         )
 
         # update the NIM run with the status of the NIM deployment.
-        db_manager.set_nim_status(
-            nim_run.id,
-            NIMRunStatus.RUNNING,
-            deployment_status=DeploymentStatus.READY,
-        )
+        if nim_run:
+            db_manager.set_nim_status(
+                nim_run.id,
+                NIMRunStatus.RUNNING,
+                deployment_status=DeploymentStatus.READY,
+            )
 
         return previous_result
     except Exception as e:
@@ -420,16 +459,18 @@ def spin_up_nim(previous_result: TaskResult, nim_config: dict) -> TaskResult:
             logger.error(f"Error shutting down NIM {nim_config.model_name}: {dms_client_err!s}")
         # Persist error on NIM run and mark the NIM run as cancelled if the error is due to cancellation.
         if isinstance(e, FlywheelCancelledError):
-            db_manager.mark_nim_cancelled(
-                nim_run.id,
-                error_msg="Flywheel run cancelled",
-            )
+            if nim_run:
+                db_manager.mark_nim_cancelled(
+                    nim_run.id,
+                    error_msg="Flywheel run cancelled",
+                )
             previous_result.error = f"Flywheel run cancelled: {e.message}"
         else:
-            db_manager.mark_nim_error(
-                nim_run.id,
-                error_msg=str(e),
-            )
+            if nim_run:
+                db_manager.mark_nim_error(
+                    nim_run.id,
+                    error_msg=str(e),
+                )
             previous_result.error = error_msg
         return previous_result
 
@@ -607,12 +648,54 @@ def run_generic_eval(
                     "scores"
                 ]["similarity"]["value"]
 
+            # MLflow integration - upload results if enabled
+            mlflow_uri = None
+            if settings.mlflow_config.enabled:
+                logger.info(
+                    f"MLflow integration enabled - uploading {eval_type} evaluation results for model {previous_result.nim.model_name}"
+                )
+                try:
+                    # Create MLflow client and upload results
+                    mlflow_client = MLflowClient(settings.mlflow_config)
+
+                    # Upload evaluation results to MLflow (single call)
+                    mlflow_uri = mlflow_client.upload_evaluation_results(
+                        job_id=job["job_id"],
+                        nmp_eval_uri=job["evaluation"].nmp_uri,
+                        flywheel_run_id=previous_result.flywheel_run_id,
+                        model_name=previous_result.nim.model_name,
+                        eval_type=eval_type.value,
+                        workload_type=previous_result.workload_type,
+                    )
+
+                except Exception as mlflow_error:
+                    logger.error(
+                        f"MLflow upload failed for {eval_type} evaluation: {mlflow_error!s}"
+                    )
+                    # Don't fail the evaluation if MLflow upload fails
+                    mlflow_uri = None
+                else:
+                    if mlflow_uri:
+                        logger.info(
+                            f"Successfully uploaded {eval_type} evaluation to MLflow: {mlflow_uri}"
+                        )
+                    else:
+                        logger.warning(
+                            f"MLflow upload completed but no URI returned for {eval_type} evaluation"
+                        )
+            else:
+                logger.debug(
+                    f"MLflow integration disabled - skipping upload for {eval_type} evaluation"
+                )
+
+            # Update evaluation with MLflow URI
             job["progress_callback"](
                 {
                     "scores": scores,
                     "finished_at": finished_time,
                     "runtime_seconds": (finished_time - start_time).total_seconds(),
                     "progress": 100.0,
+                    "mlflow_uri": mlflow_uri,
                 }
             )
             previous_result.add_evaluation(
@@ -723,6 +806,7 @@ def start_customization(previous_result: TaskResult) -> TaskResult:
             output_model_name=output_model_name,
             dataset_name=previous_result.datasets[DatasetType.TRAIN],
             training_config=settings.training_config,
+            nim_config=previous_result.nim,
         )
         logger.info(f"Customization job id: {customization_job_id}")
 
@@ -960,9 +1044,10 @@ def finalize_flywheel_run(previous_results: list[TaskResult] | TaskResult) -> Ta
     except Exception as e:
         error_msg = f"Error finalizing Flywheel run: {e!s}"
         logger.error(error_msg)
-        if previous_result:
-            previous_result.error = error_msg
-            return previous_result
+        if not previous_result:
+            return TaskResult(error=error_msg)
+
+        previous_result.error = error_msg
         db_manager.mark_flywheel_run_error(
             previous_result.flywheel_run_id, error_msg, finished_at=datetime.utcnow()
         )
@@ -1019,6 +1104,21 @@ def run_nim_workflow_dag(
 
     # Convert data_split_config to DataSplitConfig if provided
     split_config = DataSplitConfig(**data_split_config) if data_split_config else None
+    icl_config = settings.icl_config
+
+    # Create dataset workflow chain (conditionally includes embedding workflow)
+    if (
+        icl_config.example_selection == "semantic_similarity"
+        and icl_config.similarity_config.embedding_nim_config.deployment_type == "local"
+    ):
+        dataset_workflow = chain(
+            spin_up_nim.s(
+                nim_config=icl_config.similarity_config.embedding_nim_config.model_dump(),
+            ),
+            create_datasets.s(),
+        )
+    else:
+        dataset_workflow = create_datasets.s()
 
     # Create a group of chains for each NIM
     nim_chains = []
@@ -1047,7 +1147,7 @@ def run_nim_workflow_dag(
             client_id=client_id,
             data_split_config=split_config.model_dump() if split_config else None,
         ),
-        create_datasets.s(),
+        dataset_workflow,
         wait_for_llm_as_judge.s(),  ## spin up llm-judge
         chain(*nim_chains),
         finalize_flywheel_run.s(),
@@ -1080,6 +1180,18 @@ def delete_job_resources(job_id: str) -> None:
     """
     cleanup_manager = FlywheelJobManager(db_manager)
     cleanup_manager.delete_job(job_id)
+
+
+@celery_app.task(name="tasks.cancel_job_resources", pydantic=True)
+def cancel_job_resources(job_id: str) -> None:
+    """
+    Cancel a job by marking it as cancelled in the database.
+
+    Args:
+        job_id: ID of the job to cancel
+    """
+    job_manager = FlywheelJobManager(db_manager)
+    job_manager.cancel_job(job_id)
 
 
 # -------------------------------------------------------------

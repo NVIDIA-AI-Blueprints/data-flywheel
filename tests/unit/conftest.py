@@ -6,8 +6,8 @@ from bson.objectid import ObjectId
 
 from src.api.models import LLMJudgeConfig, TaskResult
 from src.api.schemas import DeploymentStatus, FlywheelRunStatus
-from src.config import settings
-from src.lib.nemo.llm_as_judge import LLMAsJudge
+from src.config import EmbeddingConfig, ICLConfig, SimilarityConfig, settings
+from src.lib.flywheel.icl_selection import ICLSelection
 
 
 @pytest.fixture(scope="session", autouse=True)
@@ -57,34 +57,65 @@ def mock_db_functions(mock_db):
 @pytest.fixture
 def remote_llm_judge_config():
     """Create a remote LLM judge configuration for testing."""
-    llm_as_judge = LLMAsJudge()
-    llm_as_judge.config = LLMJudgeConfig.from_json(
+    return LLMJudgeConfig.from_json(
         {
-            "type": "remote",
+            "deployment_type": "remote",
             "url": "http://test-remote-url/v1/chat/completions",
             "model_name": "remote-model-id",
             "api_key": "test-api-key",
             "api_key_env": "TEST_API_KEY_ENV",
         }
     )
-    yield llm_as_judge.config
 
 
-@pytest.fixture
+@pytest.fixture()
+def sample_customizer_config():
+    """Fixture to create a sample CustomizerConfig instance."""
+    from src.config import CustomizerConfig
+
+    return CustomizerConfig(
+        target="test-model-id@v1.0.0",
+        gpus=1,
+        num_nodes=1,
+        tensor_parallel_size=1,
+        data_parallel_size=1,
+        use_sequence_parallel=False,
+        micro_batch_size=1,
+        training_precision="bf16-mixed",
+        max_seq_length=2048,
+    )
+
+
+@pytest.fixture()
 def local_llm_judge_config():
     """Create a local LLM judge configuration for testing."""
-
-    return LLMJudgeConfig.from_json(
+    return LLMJudgeConfig.local_config(
         {
-            "type": "local",
+            "deployment_type": "local",
             "model_name": "test-model-id",
             "context_length": 2048,
             "gpus": 1,
             "pvc_size": "10Gi",
             "tag": "latest",
             "registry_base": "nvcr.io/nim",
-            "customization_enabled": True,
         }
+    )
+
+
+@pytest.fixture()
+def sample_nim_config_with_customization(sample_customizer_config):
+    """Create a NIMConfig with customization enabled for testing customization features."""
+    from src.config import NIMConfig
+
+    return NIMConfig(
+        model_name="test-model-customizable",
+        context_length=2048,
+        gpus=1,
+        pvc_size="10Gi",
+        tag="latest",
+        registry_base="nvcr.io/nim",
+        customization_enabled=True,
+        customizer_configs=sample_customizer_config,
     )
 
 
@@ -120,12 +151,56 @@ def mock_data_uploader():
         yield mock_instance
 
 
-@pytest.fixture
+@pytest.fixture(autouse=True)
 def mock_es_client():
     """Fixture to mock Elasticsearch client."""
-    with patch("src.lib.integration.record_exporter.get_es_client") as mock:
+    mock_instance = MagicMock()
+
+    # Mock only the methods actually used in failing test paths
+    mock_instance.search.return_value = {"hits": {"hits": []}}
+    mock_instance.ping.return_value = True
+    mock_instance.cluster.health.return_value = {"status": "green"}
+    mock_instance.indices.exists.return_value = False
+    mock_instance.indices.create.return_value = {}
+    mock_instance.indices.refresh.return_value = {}
+    mock_instance.indices.delete.return_value = {}
+
+    # Patch all the specific import locations where get_es_client is used
+    with (
+        patch("src.lib.integration.es_client.get_es_client", return_value=mock_instance),
+        patch("src.lib.integration.record_exporter.get_es_client", return_value=mock_instance),
+        patch("src.lib.flywheel.icl_selection.get_es_client", return_value=mock_instance),
+        patch("src.tasks.tasks.get_es_client", return_value=mock_instance),
+        patch("src.lib.integration.es_client.index_embeddings_to_es", return_value="test_index"),
+        patch("src.lib.integration.es_client.search_similar_embeddings", return_value=[]),
+        patch("src.lib.integration.es_client.delete_embeddings_index", return_value=None),
+        patch("src.lib.flywheel.icl_selection.search_similar_embeddings", return_value=[]),
+        patch("src.lib.flywheel.icl_selection.index_embeddings_to_es", return_value="test_index"),
+    ):
+        yield mock_instance
+
+
+@pytest.fixture(autouse=True)
+def mock_embedding_client():
+    """Fixture to mock Embedding client."""
+
+    def mock_get_embedding(queries, input_type="query"):
+        """Mock get_embedding to return appropriate number of embeddings"""
+        if isinstance(queries, list):
+            # Return one embedding per query
+            return [[0.1, 0.2, 0.3] * 682 for _ in queries]  # Mock 2048-dim embeddings
+        else:
+            # Single query
+            return [[0.1, 0.2, 0.3] * 682]  # Single mock 2048-dim embedding
+
+    with (
+        patch("src.lib.flywheel.icl_selection.Embedding") as mock_embedding_class,
+        patch("src.lib.nemo.embedding.Embedding") as mock_embedding_class_nemo,
+    ):
         mock_instance = MagicMock()
-        mock.return_value = mock_instance
+        mock_instance.get_embedding.side_effect = mock_get_embedding
+        mock_embedding_class.return_value = mock_instance
+        mock_embedding_class_nemo.return_value = mock_instance
         yield mock_instance
 
 
@@ -158,7 +233,7 @@ def workflow_setup():
             {"model_name": "model_2", "deployment_type": "local", "gpus": 1, "tag": "latest"},
         ],
         "llm_judge_config": {
-            "type": "remote",
+            "deployment_type": "remote",
             "url": "http://llm-judge-endpoint.com",
             "model_name": "llm_judge_model",
             "api_key": "test_api_key",
@@ -193,6 +268,7 @@ def common_workflow_params():
 def sample_es_data():
     """Sample Elasticsearch data for testing dataset creation"""
     return {
+        "_scroll_id": "scroll123",
         "hits": {
             "hits": [
                 {
@@ -208,14 +284,14 @@ def sample_es_data():
                 }
                 for i in range(30)
             ]
-        }
+        },
     }
 
 
 @pytest.fixture
 def empty_es_data():
     """Empty Elasticsearch data for testing error scenarios"""
-    return {"hits": {"hits": []}}
+    return {"_scroll_id": "scroll123", "hits": {"hits": []}}
 
 
 @pytest.fixture
@@ -376,7 +452,7 @@ def test_db_success(mock_db):
         "_id": llm_judge_id,
         "flywheel_run_id": flywheel_run_id,
         "model_name": "test-llm-judge",
-        "type": "remote",
+        "deployment_type": "remote",
         "deployment_status": DeploymentStatus.READY,
         "url": "http://test-llm-judge.com",
     }
@@ -497,3 +573,49 @@ def invalid_openai_records():
         # Invalid choices type
         {"request": {"messages": []}, "response": {"choices": "not a list"}},
     ]
+
+
+# ICL-related common fixtures
+@pytest.fixture
+def uniform_icl_config():
+    """Common ICL config for uniform distribution testing."""
+
+    return ICLConfig(
+        max_context_length=32768,
+        reserved_tokens=4096,
+        max_examples=3,
+        min_examples=1,
+        example_selection="uniform_distribution",
+    )
+
+
+@pytest.fixture
+def icl_selection_factory():
+    """Factory fixture for creating ICL Selection instances with different configs."""
+
+    def _create_icl_selection(config_type="uniform", workload_suffix=""):
+        if config_type == "semantic":
+            embedding_config = EmbeddingConfig(
+                deployment_type="local",
+                model_name="nvidia/llama-3.2-nv-embedqa-1b-v2",
+                context_length=32768,
+                gpus=1,
+                pvc_size="25Gi",
+                tag="1.9.0",
+            )
+            similarity_config = SimilarityConfig(embedding_nim_config=embedding_config)
+            config = ICLConfig(
+                example_selection="semantic_similarity", similarity_config=similarity_config
+            )
+        else:  # uniform
+            config = ICLConfig(example_selection="uniform_distribution")
+
+        with patch("src.lib.flywheel.icl_selection.get_es_client") as mock_es:
+            mock_es.return_value = MagicMock()
+            return ICLSelection(
+                config=config,
+                workload_id=f"test-{config_type}-workload{workload_suffix}",
+                client_id=f"test-{config_type}-client",
+            )
+
+    return _create_icl_selection

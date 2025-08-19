@@ -74,7 +74,7 @@ class TestJobServiceWaitForLLM:
                 "_id": ObjectId(),
                 "flywheel_run_id": ObjectId(),
                 "model_name": "test-llm-judge",
-                "type": "remote",
+                "deployment_type": "remote",
                 "deployment_status": DeploymentStatus.PENDING,
                 "url": "http://test-llm-judge.com",
             }
@@ -88,10 +88,10 @@ class TestJobServiceWaitForLLM:
         task_result = TaskResult(
             flywheel_run_id=llm_judge_setup["flywheel_run_id"],
             llm_judge_config=LLMJudgeConfig(
-                type="remote",
+                deployment_type="remote",
                 model_name="test-llm-judge",
                 url=llm_judge_setup["endpoint"],
-                customization_enabled=True,
+                customization_enabled=False,
             ),
         )
 
@@ -109,7 +109,7 @@ class TestJobServiceWaitForLLM:
                 "_id": ObjectId(llm_judge_setup["llm_judge_id"]),
                 "flywheel_run_id": ObjectId(llm_judge_setup["flywheel_run_id"]),
                 "model_name": "test-llm-judge",
-                "type": "remote",
+                "deployment_type": "remote",
                 "deployment_status": DeploymentStatus.READY,
                 "url": llm_judge_setup["endpoint"],
             }
@@ -139,12 +139,12 @@ class TestJobServiceWaitForLLM:
         task_result = TaskResult(
             flywheel_run_id=llm_judge_setup["flywheel_run_id"],
             llm_judge_config=LLMJudgeConfig(
-                type="local",  # Local LLM judge
+                deployment_type="local",  # Local LLM judge
                 model_name="test-llm-judge",
                 context_length=8192,
                 pvc_size="10Gi",
                 tag="1.8.3",
-                customization_enabled=True,
+                customization_enabled=False,
             ),
         )
 
@@ -153,11 +153,11 @@ class TestJobServiceWaitForLLM:
             "_id": ObjectId(llm_judge_setup["llm_judge_id"]),
             "flywheel_run_id": ObjectId(llm_judge_setup["flywheel_run_id"]),
             "model_name": "test-llm-judge",
-            "type": "local",
+            "deployment_type": "local",
             "deployment_status": DeploymentStatus.PENDING,
             "context_length": 8192,
             "pvc_size": "10Gi",
-            "customization_enabled": True,
+            "customization_enabled": False,
             "Tag": "1.8.3",
         }
         mock_task_db_manager.find_llm_judge_run.return_value = local_llm_judge
@@ -193,12 +193,12 @@ class TestJobServiceWaitForLLM:
 
         # Update mock for get_job_details to reflect the local LLM Judge
         with patch("src.api.job_service.get_db", return_value=mock_db):
-            # Note: The API response doesn't include 'type' field, which is internal to the DB model
+            # Note: The API response doesn't include 'deployment_type' field, which is internal to the DB model
             local_llm_judge_db = {
                 "_id": ObjectId(llm_judge_setup["llm_judge_id"]),
                 "flywheel_run_id": ObjectId(llm_judge_setup["flywheel_run_id"]),
                 "model_name": "test-llm-judge",
-                "type": "local",  # Needed for database but not in API response
+                "deployment_type": "local",  # Needed for database but not in API response
                 "deployment_status": DeploymentStatus.READY,
                 "url": llm_judge_setup["endpoint"],
             }
@@ -232,12 +232,12 @@ class TestJobServiceWaitForLLM:
         task_result = TaskResult(
             flywheel_run_id=llm_judge_setup["flywheel_run_id"],
             llm_judge_config=LLMJudgeConfig(
-                type="local",  # Local LLM judge
+                deployment_type="local",  # Local LLM judge
                 model_name="test-llm-judge",
                 context_length=8192,
                 pvc_size="10Gi",
                 tag="1.8.3",
-                customization_enabled=True,
+                customization_enabled=False,
             ),
         )
 
@@ -246,11 +246,11 @@ class TestJobServiceWaitForLLM:
             "_id": ObjectId(llm_judge_setup["llm_judge_id"]),
             "flywheel_run_id": ObjectId(llm_judge_setup["flywheel_run_id"]),
             "model_name": "test-llm-judge",
-            "type": "local",
+            "deployment_type": "local",
             "deployment_status": DeploymentStatus.PENDING,
             "context_length": 8192,
             "pvc_size": "10Gi",
-            "customization_enabled": True,
+            "customization_enabled": False,
             "Tag": "1.8.3",
         }
         mock_task_db_manager.find_llm_judge_run.return_value = local_llm_judge
@@ -284,12 +284,12 @@ class TestJobServiceWaitForLLM:
         )
         # Update mock for get_job_details to reflect the local LLM Judge
         with patch("src.api.job_service.get_db", return_value=mock_db):
-            # Note: The API response doesn't include 'type' field, which is internal to the DB model
+            # Note: The API response doesn't include 'deployment_type' field, which is internal to the DB model
             local_llm_judge_db = {
                 "_id": ObjectId(llm_judge_setup["llm_judge_id"]),
                 "flywheel_run_id": ObjectId(llm_judge_setup["flywheel_run_id"]),
                 "model_name": "test-llm-judge",
-                "type": "local",  # Needed for database but not in API response
+                "deployment_type": "local",  # Needed for database but not in API response
                 "deployment_status": DeploymentStatus.FAILED,
                 "url": llm_judge_setup["endpoint"],
             }

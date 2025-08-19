@@ -17,7 +17,7 @@ from typing import Any
 
 import requests
 
-from src.config import TrainingConfig, settings
+from src.config import CustomizerConfig, NIMConfig, TrainingConfig, settings
 from src.lib.flywheel.cancellation import check_cancellation
 from src.log_utils import setup_logging
 
@@ -33,6 +33,61 @@ class Customizer:
         self.namespace = settings.nmp_config.nmp_namespace
         assert self.nemo_url, "nemo_base_url must be set in config"
 
+    def create_customizer_config(
+        self,
+        base_model: str,
+        customizer_config: CustomizerConfig,
+        training_config: TrainingConfig,
+    ) -> str:
+        """
+        Create a customizer configuration for a base model.
+
+        Args:
+            base_model: Base model name
+            customizer_config: Customizer configuration
+            training_config: Training configuration
+
+        Returns:
+            Configuration name to use for training
+        """
+        config_name = NIMConfig.generate_config_name(base_model)
+
+        # Prepare the configuration payload
+        config_payload = {
+            "name": config_name,
+            "namespace": self.namespace,
+            "target": customizer_config.target,
+            "training_options": [
+                {
+                    "training_type": training_config.training_type,
+                    "finetuning_type": training_config.finetuning_type,
+                    "num_gpus": customizer_config.gpus,
+                    "num_nodes": customizer_config.num_nodes,
+                    "tensor_parallel_size": customizer_config.tensor_parallel_size,
+                    "data_parallel_size": customizer_config.data_parallel_size,
+                    "use_sequence_parallel": customizer_config.use_sequence_parallel,
+                    "micro_batch_size": customizer_config.micro_batch_size,
+                }
+            ],
+            "training_precision": customizer_config.training_precision,
+            "max_seq_length": customizer_config.max_seq_length,
+        }
+
+        # Try to create the configuration
+        response = requests.post(
+            f"{self.nemo_url}/v1/customization/configs",
+            json=config_payload,
+            headers={"Content-Type": "application/json"},
+        )
+
+        # If we get a 409, the config already exists, which is fine
+        if response.status_code not in (200, 409):
+            msg = f"Failed to create customizer config. Status: {response.status_code}, Response: {response.text}"
+            logger.error(msg)
+            raise Exception(msg)
+
+        return config_name
+
     def start_training_job(
         self,
         name: str,
@@ -40,6 +95,7 @@ class Customizer:
         output_model_name: str,
         dataset_name: str,
         training_config: TrainingConfig,
+        nim_config: NIMConfig,
     ) -> tuple[str, str]:
         """
         Start a new training job for model customization.
@@ -50,15 +106,26 @@ class Customizer:
             output_model_name: Name for the fine-tuned model
             dataset_name: Name of the dataset to use for fine-tuning
             training_config: Training configuration parameters
+            nim_config: NIM configuration containing customizer configs
 
         Returns:
             Tuple containing the job ID and the customized model name
         """
+        # Find matching customizer config
+        customizer_config = None
+        if nim_config.customizer_configs:
+            customizer_config = nim_config.customizer_configs
+
+        if not customizer_config:
+            raise ValueError(f"No customizer config found for base model {base_model}")
+
+        # Create or get the config name
+        config_name = self.create_customizer_config(base_model, customizer_config, training_config)
 
         training_params = {
             "name": name,
             "output_model": f"{self.namespace}/{output_model_name}",
-            "config": base_model,
+            "config": f"{self.namespace}/{config_name}",
             "dataset": {"name": dataset_name, "namespace": self.namespace},
             "hyperparameters": {
                 "training_type": training_config.training_type,
@@ -248,14 +315,6 @@ class Customizer:
                 raise Exception(error_message)
 
             elif current_status == "running":
-                # Check for resource availability issues in the last status message and exit if found.
-                if status_logs and status_logs[-1].get("message") == "NotEnoughResources":
-                    error_message = f"Job {job_id} failed due to insufficient resources"
-                    logger.error(error_message)
-                    if progress_callback:
-                        progress_callback({"progress": 0.0, "error": error_message})
-                    raise Exception(error_message)
-
                 # Get progress information
                 progress = float(status_response.get("percentage_done", 0))
                 epochs_completed = status_response.get("epochs_completed", 0)
@@ -291,6 +350,14 @@ class Customizer:
                 raise Exception(msg)
 
             if time.time() - start_time > timeout:
+                # Check for resource availability issues in the last status message before timing out
+                if status_logs and status_logs[-1].get("message") == "NotEnoughResources":
+                    error_message = f"Job {job_id} failed due to insufficient resources"
+                    logger.error(error_message)
+                    if progress_callback:
+                        progress_callback({"progress": 0.0, "error": error_message})
+                    raise Exception(error_message)
+
                 error_message = f"Job {job_id} stalled for more than {timeout} seconds"
                 if progress_callback:
                     progress_callback({"progress": 0.0, "error": error_message})
@@ -299,6 +366,28 @@ class Customizer:
 
             # Wait before next check
             time.sleep(check_interval)
+
+    def delete_customization_config(self, config_name: str) -> None:
+        """
+        Delete a customization configuration from the NMP.
+
+        Args:
+            config_name: Name of the configuration to delete
+
+        Raises:
+            Exception: If configuration deletion fails
+        """
+        config_id = f"{self.namespace}/{config_name}"
+
+        # Delete the configuration
+        response = requests.delete(f"{self.nemo_url}/v1/customization/configs/{config_id}")
+
+        if response.status_code != 200:
+            msg = f"Failed to delete customization config {config_id}. Status: {response.status_code}, Response: {response.text}"
+            logger.error(msg)
+            return
+
+        logger.info(f"Successfully deleted customization config {config_id}")
 
     def delete_customized_model(self, model_name: str) -> None:
         """

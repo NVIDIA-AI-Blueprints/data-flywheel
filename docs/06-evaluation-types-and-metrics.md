@@ -25,18 +25,33 @@ Base evaluation tests a model on a standard, held-out dataset sampled from produ
 
 ```json
 {
-  "messages": [
-    {"role": "user", "content": "How do I reset my password?"},
-    {"role": "assistant", "content": "Click 'Forgot password' on the login page."}
-  ]
+  "request": {
+    "messages": [
+      {"role": "user", "content": "How do I reset my password?"}
+    ]
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "Click 'Forgot password' on the login page."
+        }
+      }
+    ]
+  }
 }
 ```
 
+> **Note** 
+>
+> The model receives only the `request.messages` as input and generates its own response, which is then compared against the ground truth stored in `response.choices[0].message.content` for evaluation scoring.
+
 ### ICL Evaluation (`icl-eval`)
 
-ICL (In-Context Learning) evaluation tests a model's ability to leverage a few-shot context—that is, it prepends a small number of example Q&A pairs to each prompt, simulating a "few-shot" learning scenario.
+ICL (In-Context Learning) evaluation tests a model's ability to leverage a few-shot context—that is, it injects a small number of example Q&A pairs into the system message of each prompt, simulating a "few-shot" learning scenario.
 
-- **dataset:** ICL-augmented (each test example is preceded by a configurable number of ICL examples)
+- **dataset:** ICL-augmented (each test example has a configurable number of ICL examples injected into its system message)
 - **model:** Out-of-the-box (no fine-tuning)
 - **context:** Few-shot (ICL) examples, controlled by `icl_config` in `config.yaml`
 - **purpose:** Measures how well the model can generalize or adapt when given a few relevant examples, simulating real-world prompt engineering or agentic use cases.
@@ -45,19 +60,31 @@ ICL (In-Context Learning) evaluation tests a model's ability to leverage a few-s
 
 ```json
 {
-  "messages": [
-    {"role": "user", "content": "How do I reset my password?"},
-    {"role": "assistant", "content": "Click 'Forgot password' on the login page."},
-    {"role": "user", "content": "How do I change my email address?"},
-    {"role": "assistant", "content": "Go to account settings and update your email."},
-    {"role": "user", "content": "How do I delete my account?"}
-  ]
+  "request": {
+    "messages": [
+      {
+        "role": "system",
+        "content": "You are a helpful assistant that can answer questions and help with tasks.\nHere are some examples of how you should respond to different types of requests:\n\nFor example, if the conversation looks like this:\nuser: How do I reset my password?\n\nThen you'll respond with:\nassistant: Click 'Forgot password' on the login page.\n\nFor example, if the conversation looks like this:\nuser: How do I change my email address?\n\nThen you'll respond with:\nassistant: Go to account settings and update your email."
+      },
+      {"role": "user", "content": "How do I delete my account?"}
+    ]
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "Go to your account settings and select 'Delete Account' option."
+        }
+      }
+    ]
+  }
 }
 ```
 
 > **Note** 
 >
-> The last user message is the test query; the previous pairs are ICL examples.
+> ICL examples are injected into the system message as formatted instructional text. The model receives the `request.messages` (including the system message with examples) as input, and its response is compared against the ground truth in `response.choices[0].message.content`.
 
 ### Customized Evaluation (`customized-eval`)
 
@@ -71,13 +98,28 @@ Customized evaluation tests a *fine-tuned* or *customized* version of the model 
 **Example:**
 ```json
 {
-  "messages": [
-    {"role": "user", "content": "How do I reset my password?"},
-    {"role": "assistant", "content": "Click 'Forgot password' on the login page."}
-  ]
+  "request": {
+    "messages": [
+      {"role": "user", "content": "How do I reset my password?"}
+    ]
+  },
+  "response": {
+    "choices": [
+      {
+        "message": {
+          "role": "assistant",
+          "content": "Click 'Forgot password' on the login page."
+        }
+      }
+    ]
+  }
   // Model being evaluated is a fine-tuned/customized version
 }
 ```
+
+> **Note** 
+>
+> Like Base Evaluation, the customized model receives only the `request.messages` as input. The evaluation compares the customized model's response against the same ground truth reference answer to measure the impact of fine-tuning.
 
 ### Tool-Calling Evaluation Example
 
@@ -136,7 +178,7 @@ Metrics appear in the `scores` field of evaluation results.
 | Metric Name | Type/Range | Computed By| Description |
 |-------------------------------|--------------------|----------------------|----------------------------------------------------------------------------------------------|
 | similarity | Integer (1–10) | LLM judge | For non tool-calling datasets; LLM-judged similarity between candidate and reference answers. Higher is better. |
-| function_name / function_name_accuracy | Float (0–1) | Programmatic | Accuracy of function name prediction in tool-calling tasks. |
+| function_name | Float (0–1) | Programmatic | Accuracy of function name prediction in tool-calling tasks. |
 | function_name_and_args_accuracy| Float (0–1) | Programmatic | Accuracy of both function name and arguments in tool-calling tasks. |
 | tool_calling_correctness | Integer (0 or 1) | LLM judge | LLM-judged correctness of tool call output (1=correct, 0=incorrect). |
 

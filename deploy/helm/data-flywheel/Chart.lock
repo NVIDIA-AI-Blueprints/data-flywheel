@@ -1,0 +1,15 @@
+dependencies:
+- name: nemo-microservices-helm-chart
+  repository: https://helm.ngc.nvidia.com/nvidia/nemo-microservices
+  version: 25.8.0
+- name: elasticsearch
+  repository: https://charts.bitnami.com/bitnami
+  version: 20.0.0
+- name: redis
+  repository: https://charts.bitnami.com/bitnami
+  version: 19.6.4
+- name: mongodb
+  repository: https://charts.bitnami.com/bitnami
+  version: 15.6.26
+digest: sha256:8441e81f694c2f7df49486f3fb2fcbbed80d81beccae02363df3b5107aec822d
+generated: "2025-08-08T00:08:01.886752056Z"

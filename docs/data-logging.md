@@ -15,8 +15,7 @@ To enable data logging, set the following environment variables:
 
 ```sh
 ELASTICSEARCH_URL=http://your-elasticsearch-host:9200
-ELASTICSEARCH_INDEX=llm-logs  # Default index name
-ELASTICSEARCH_CLIENT_ID=your-app-name  # Client identifier
+ES_COLLECTION_NAME=flywheel  # Default index name
 ```
 
 ### Data Schema
@@ -35,32 +34,82 @@ Log entries should include:
 
 ## Implementing Data Logging in Any App
 
-### Generic Logging Handler (Example)
+### Direct Elasticsearch Integration (Recommended)
+
+The Data Flywheel Blueprint uses direct Elasticsearch integration for logging. Here's a practical example:
 
 ```python
-class GenericLogHandler(AsyncCallbackHandler):
-    def __init__(self, workload_id):
-        self.workload_id = workload_id
-        self.elasticsearch_url = os.getenv("ELASTICSEARCH_URL", "")
-    async def on_chat_model_start(self, serialized, messages, run_id, **kwargs):
-        # Capture request data
-        self.request_data = {...}
-    async def on_llm_end(self, output, run_id, **kwargs):
-        # Create log entry and send to backend
-        log_entry = {...}
-        await self._log_to_backend(log_entry)
+import os
+import time
+import uuid
+from elasticsearch import Elasticsearch
+from openai import OpenAI
+
+# Environment configuration
+ES_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+ES_INDEX = os.getenv("ES_COLLECTION_NAME", "flywheel")
+
+# Initialize clients
+es = Elasticsearch(hosts=[ES_URL])
+openai_client = OpenAI()
+
+CLIENT_ID = "my_demo_app"
+
+# Example agent nodes (each with its own workload_id)
+WORKLOADS = {
+    "simple_chat": "agent.chat",
+    "tool_router": "agent.tool_router",
+}
+
+def log_chat(workload_id: str, messages: list[dict]):
+    # 1) call the LLM
+    response = openai_client.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=messages,
+        temperature=0.3,
+    )
+
+    # 2) build the document
+    doc = {
+        "timestamp": int(time.time()),
+        "workload_id": workload_id,
+        "client_id": CLIENT_ID,
+        "request": {
+            "model": response.model,
+            "messages": messages,
+            "temperature": 0.3,
+            "max_tokens": 1024,
+        },
+        "response": response.model_dump(),  # OpenAI python-sdk v1 returns a pydantic model
+    }
+
+    # 3) write to Elasticsearch
+    es.index(index=ES_INDEX, document=doc, id=str(uuid.uuid4()))
+
+# --- Example usage -----------------------------------------------------------
+messages_chat = [{"role": "user", "content": "Hello!"}]
+log_chat(WORKLOADS["simple_chat"], messages_chat)
+
+messages_tool = [
+    {"role": "user", "content": "Who won the 2024 Super Bowl?"},
+    {
+        "role": "system",
+        "content": "You are a router that decides whether to call the Wikipedia tool or answer directly.",
+    },
+]
+log_chat(WORKLOADS["tool_router"], messages_tool)
 ```
 
 ### Integration Steps
 
-1. Initialize the logging handler with the appropriate `workload_id`.
-2. Attach the handler to your large language model (LLM) or agent workflow.
-3. Make sure environment variables are set for your logging backend.
-4. Log each request/response interaction.
+1. Initialize the Elasticsearch client with the appropriate connection settings.
+2. For each LLM interaction, capture both request and response data.
+3. Structure the data according to the required schema with `workload_id` and `client_id`.
+4. Index the log entry to Elasticsearch.
 
 ## Example: Instrumenting AIVA
 
-This section provides a practical example of instrumenting an [AI Virtual Assistant (AIVA)](https://github.com/NVIDIA-AI-Blueprints/ai-virtual-assistant) application to log data for the Data Flywheel. It extends the general guidelines presented in the ["Instrumenting an application"](../README.md#2instrumenting-an-application) section of the main README. Instrumenting your application to log LLM interactions is a critical step in implementing the Data Flywheel. This example demonstrates how to integrate Elasticsearch logging into AIVA to capture comprehensive data about LLM interactions.
+This section provides a practical example of instrumenting an [AI Virtual Assistant (AIVA)](https://github.com/NVIDIA-AI-Blueprints/ai-virtual-assistant) application to log data for the Data Flywheel. It extends the general guidelines presented in the ["Instrumenting an application"](../README.md#2instrumenting-an-application) section of the main README.
 
 ### Configuration
 
@@ -68,8 +117,7 @@ To enable data logging to Elasticsearch for AIVA, configure the following enviro
 
 ```sh
 ELASTICSEARCH_URL=http://your-elasticsearch-host:9200
-ELASTICSEARCH_INDEX=aiva-llm-logs  # Default index name
-ELASTICSEARCH_CLIENT_ID=aiva       # Client identifier
+ES_COLLECTION_NAME=flywheel  # Default index name
 ```
 
 ### Data Schema
@@ -91,7 +139,7 @@ The log entries stored in Elasticsearch contain the following structure:
     "model": "model_name",
     "usage": {"prompt_tokens": 50, "completion_tokens": 120, "total_tokens": 170}
   },
-  "timestamp": "2024-05-15T12:34:56.789Z",
+  "timestamp": 1715854074,
   "client_id": "aiva",
   "workload_id": "session_id"
 }
@@ -99,67 +147,135 @@ The log entries stored in Elasticsearch contain the following structure:
 
 ### Implementation Architecture
 
-The AIVA logging system consists of three main components:
+The Data Flywheel system includes several components for data management:
 
-1. **ElasticsearchLogHandler**: A custom LangChain callback handler that captures request and response data.
-2. **Integration with AIVA Agent System**: Seamless incorporation into the agent architecture.
-3. **Docker Compose/Environment Configuration**: Use environment variables to connect to Elasticsearch.
+1. **Elasticsearch Client**: Handles connections and indexing (`src/lib/integration/es_client.py`)
+2. **Record Exporter**: Retrieves logged data for processing (`src/lib/integration/record_exporter.py`)
+3. **Data Validation**: Ensures data quality before processing (`src/lib/integration/data_validator.py`)
 
-- **Request data**: Prompts, messages, model parameters
-- **Response data**: Completions, tokens, usage statistics
-- **Metadata**: Timestamps, client identifiers, workload IDs
+### Code Implementation Examples
 
-#### Code Implementation (AIVA Example)
+#### Elasticsearch Client Implementation
 
-```python
-class ElasticsearchLogHandler(AsyncCallbackHandler):
-    def __init__(self, workload_id):
-        self.workload_id = workload_id
-        self.elasticsearch_url = os.getenv("ELASTICSEARCH_URL", "")
-    async def on_chat_model_start(self, serialized, messages, run_id, **kwargs):
-        self.request_data = {
-            "model": metadata.get("ls_model_name", serialized.get("model")),
-            "messages": convert_to_openai_messages(messages[0]),
-            "temperature": metadata.get("ls_temperature"),
-            "max_tokens": metadata.get("ls_max_tokens"),
-            "tools": kwargs.get("invocation_params", {}).get("tools")
-        }
-    async def on_llm_end(self, output, run_id, **kwargs):
-        log_entry = {
-            "request": self.request_data,
-            "response": {
-                "id": str(run_id),
-                "object": "chat.completion",
-                "model": output.llm_output.pop("model_name"),
-                **output.llm_output
-            },
-            "timestamp": datetime.utcnow().isoformat(),
-            "client_id": os.getenv("ELASTICSEARCH_CLIENT_ID", "aiva"),
-            "workload_id": self.workload_id
-        }
-        await self._log_to_elasticsearch(log_entry)
-```
-
-#### Integration with AIVA
+The system uses a robust Elasticsearch client:
 
 ```python
-class Assistant:
-    def __init__(self, prompt, tools, workload_id):
-        self.prompt = prompt
-        self.tools = tools
-        self.workload_id = workload_id
-    async def __call__(self, state, config):
-        llm = get_llm(**config.get('configurable', {}).get("llm_settings"))
-        elasticsearch_url = os.getenv("ELASTICSEARCH_URL", "")
-        if elasticsearch_url:
-            callbacks = await create_langchain_callbacks(workload_id=self.workload_id)
-            runnable = runnable.with_config(callbacks=callbacks)
-            config = {**config, "callbacks": callbacks}
-        result = await runnable.ainvoke(state)
-        return {"messages": result}
+# From src/lib/integration/es_client.py (simplified for readability)
+import os
+import time
+from elasticsearch import Elasticsearch, ConnectionError
+
+ES_COLLECTION_NAME = os.getenv("ES_COLLECTION_NAME", "flywheel")
+ES_URL = os.getenv("ELASTICSEARCH_URL", "http://localhost:9200")
+
+def get_es_client():
+    """Get a working Elasticsearch client, retrying if needed."""
+    for attempt in range(30):  # Try for up to 30 seconds
+        try:
+            client = Elasticsearch(hosts=[ES_URL])
+            if client.ping():
+                health = client.cluster.health()
+                if health["status"] in ["yellow", "green"]:
+                    # Create primary index if it doesn't exist
+                    client.indices.refresh()
+                    if not client.indices.exists(index=ES_COLLECTION_NAME):
+                        client.indices.create(index=ES_COLLECTION_NAME, body=ES_INDEX_SETTINGS)
+                    return client
+            time.sleep(1)
+        except ConnectionError as err:
+            if attempt == 29:
+                raise RuntimeError("Could not connect to Elasticsearch") from err
+            time.sleep(1)
+    
+    raise RuntimeError("Elasticsearch did not become healthy in time")
 ```
 
-#### Dependencies
+#### Data Loading for Testing
+
+For development and testing, you can load sample data:
+
+```python
+# From src/scripts/load_test_data.py
+from src.lib.integration.es_client import get_es_client, ES_COLLECTION_NAME
+
+def load_data_to_elasticsearch(
+    workload_id: str = "",
+    client_id: str = "",
+    file_path: str = "aiva_primary_assistant_dataset.jsonl",
+    index_name: str = ES_COLLECTION_NAME,
+):
+    """Load test data from JSON file into Elasticsearch."""
+    es = get_es_client()
+    
+    with open(file_path) as f:
+        test_data = [json.loads(line) for line in f]
+    
+    for doc in test_data:
+        # Override identifiers if provided
+        if workload_id:
+            doc["workload_id"] = workload_id
+        if client_id:
+            doc["client_id"] = client_id
+        
+        es.index(index=index_name, document=doc)
+    
+    # Refresh the index to make data immediately available
+    es.indices.refresh(index=index_name)
+```
+
+#### AIVA Data Transformation
+
+For AIVA-specific data transformation, the system provides a transformation script:
+
+```python
+# From src/scripts/aiva.py - Transform AIVA conversation data to Data Flywheel format
+import json
+import time
+
+# Function name mapping for workload identification
+function_name_mapping = {}
+for record in records:
+    tools = record.get("tools", [])
+    function_names = sorted(tool.get("function", {}).get("name", "wat") for tool in tools)
+    function_names_str = ",".join(function_names)
+    if function_names_str in function_name_mapping:
+        function_name_mapping[function_names_str] += 1
+    else:
+        function_name_mapping[function_names_str] = 1
+
+# Assign unique workload_id to each function_names_str
+function_name_to_workload_id = {}
+for idx, fnames in enumerate(function_name_mapping.keys()):
+    function_name_to_workload_id[fnames] = f"aiva_{idx+1}"
+
+# Transform each record to Data Flywheel format
+final_dataset = []
+for rec in final_records:
+    # Build OpenAI-compatible request/response format
+    request = {
+        "model": "meta/llama-3.1-70b-instruct",
+        "messages": [rec["system_prompt"], rec["first_user_message"]],
+        "tools": rec["tools"],
+    }
+    
+    response = {"choices": [{"message": rec["response"]}]}
+    
+    # Determine workload_id based on tool function names
+    function_names = sorted(tool.get("function", {}).get("name", "wat") for tool in rec["tools"])
+    function_names_str = ",".join(function_names)
+    workload_id = function_name_to_workload_id.get(function_names_str, "unknown")
+    
+    new_entry = {
+        "request": request,
+        "response": response,
+        "workload_id": workload_id,
+        "client_id": "dev",
+        "timestamp": int(time.time()),
+    }
+    final_dataset.append(new_entry)
+```
+
+### Dependencies
 
 - `elasticsearch==8.17.2`
 
@@ -169,9 +285,34 @@ class Assistant:
 - Make sure you include error handling in logging routines.
 - Be mindful of privacy and personally identifiable information (PII)—consider redacting or anonymizing as needed.
 - Log only what's necessary for model improvement and debugging.
+- Use the `ES_COLLECTION_NAME` environment variable to configure your index name.
+- Ensure your Elasticsearch cluster is properly configured for the expected data volume.
+
+## Data Validation
+
+The system includes built-in data validation to ensure quality:
+
+- **OpenAI Format Validation**: Ensures proper request/response structure
+- **Workload Type Detection**: Automatically identifies tool-calling vs. generic conversations
+- **Deduplication**: Removes duplicate entries based on user queries
+- **Quality Filters**: Applies workload-specific quality checks
+
+## Integration with Data Flywheel
+
+Once data is logged to Elasticsearch, the Data Flywheel can:
+
+1. **Export Records**: Use `RecordExporter` to retrieve data for processing
+2. **Validate Data**: Apply quality filters and format validation
+3. **Create Datasets**: Generate training and evaluation datasets
+4. **Run Evaluations**: Compare model performance across different configurations
 
 ## Additional Resources
 
 - [Instrumenting an application (README)](../README.md#2instrumenting-an-application)
 - [Elasticsearch Python client](https://www.elastic.co/guide/en/elasticsearch/client/python-api/current/index.html)
-- [LangChain Callbacks](https://python.langchain.com/docs/modules/callbacks/) 
+- [Data Validation Guide](dataset-validation.md)
+- Source code examples:
+  - `src/lib/integration/es_client.py` - Elasticsearch integration
+  - `src/lib/integration/record_exporter.py` - Data retrieval
+  - `src/scripts/load_test_data.py` - Data loading utilities
+  - `src/scripts/aiva.py` - AIVA data transformation examples 

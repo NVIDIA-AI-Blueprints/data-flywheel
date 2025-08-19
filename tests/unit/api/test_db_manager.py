@@ -19,7 +19,7 @@ from unittest.mock import ANY, Mock, patch
 import pytest
 from bson import ObjectId
 
-from src.api.db_manager import TaskDBManager
+from src.api.db_manager import TaskDBManager, get_db_manager
 from src.api.models import (
     EvalType,
     FlywheelRunStatus,
@@ -47,7 +47,58 @@ def db_manager():
         return TaskDBManager()
 
 
+class TestGetDbManager:
+    """Test cases for the get_db_manager function."""
+
+    def test_get_db_manager_singleton(self):
+        """Test get_db_manager returns singleton instance."""
+        with patch("src.api.db_manager.TaskDBManager") as mock_task_db:
+            mock_instance = Mock()
+            mock_task_db.return_value = mock_instance
+
+            # Save the current singleton state
+            import src.api.db_manager
+
+            original_db_manager = src.api.db_manager._db_manager
+
+            try:
+                # Reset the global singleton for this test only
+                src.api.db_manager._db_manager = None
+
+                # First call should create instance
+                result1 = get_db_manager()
+                mock_task_db.assert_called_once()
+                assert result1 == mock_instance
+
+                # Second call should return same instance
+                result2 = get_db_manager()
+                # Should not call TaskDBManager again
+                mock_task_db.assert_called_once()
+                assert result2 == mock_instance
+                assert result1 is result2
+            finally:
+                # Always restore the original singleton state
+                src.api.db_manager._db_manager = original_db_manager
+
+
 class TestTaskDBManager:
+    def test_db_property(self, db_manager):
+        """Test the db property returns the database instance."""
+        result = db_manager.db
+        assert result == db_manager._db
+
+    def test_update_flywheel_run_status(self, db_manager):
+        """Test updating flywheel run status."""
+        run_id = "507f1f77bcf86cd799439011"
+        status = FlywheelRunStatus.RUNNING
+
+        db_manager.update_flywheel_run_status(run_id, status)
+
+        db_manager._flywheel_runs.update_one.assert_called_once_with(
+            {"_id": ObjectId(run_id), "error": None},
+            {"$set": {"status": status}},
+        )
+
     def test_mark_flywheel_run_completed(self, db_manager):
         run_id = "507f1f77bcf86cd799439011"
         finished_at = datetime.utcnow()
@@ -75,6 +126,58 @@ class TestTaskDBManager:
                 }
             },
         )
+
+    def test_mark_flywheel_run_cancelled(self, db_manager):
+        """Test marking flywheel run as cancelled."""
+        run_id = "507f1f77bcf86cd799439011"
+        error_msg = "Cancelled by user"
+
+        with patch("src.api.db_manager.datetime") as mock_datetime:
+            mock_time = datetime.utcnow()
+            mock_datetime.utcnow.return_value = mock_time
+
+            db_manager.mark_flywheel_run_cancelled(run_id, error_msg)
+
+            expected_update = {
+                "status": FlywheelRunStatus.CANCELLED,
+                "finished_at": mock_time,
+                "error": error_msg,
+            }
+
+            db_manager._flywheel_runs.update_one.assert_called_once_with(
+                {"_id": ObjectId(run_id), "finished_at": None},
+                {"$set": expected_update},
+            )
+
+    def test_is_flywheel_run_cancelled_true(self, db_manager):
+        """Test is_flywheel_run_cancelled returns True when cancelled."""
+        run_id = "507f1f77bcf86cd799439011"
+        db_manager._flywheel_runs.find_one.return_value = {"status": FlywheelRunStatus.CANCELLED}
+
+        result = db_manager.is_flywheel_run_cancelled(run_id)
+
+        assert result is True
+        db_manager._flywheel_runs.find_one.assert_called_once_with(
+            {"_id": ObjectId(run_id)}, {"status": 1}
+        )
+
+    def test_is_flywheel_run_cancelled_false(self, db_manager):
+        """Test is_flywheel_run_cancelled returns False when not cancelled."""
+        run_id = "507f1f77bcf86cd799439011"
+        db_manager._flywheel_runs.find_one.return_value = {"status": FlywheelRunStatus.RUNNING}
+
+        result = db_manager.is_flywheel_run_cancelled(run_id)
+
+        assert result is False
+
+    def test_is_flywheel_run_cancelled_no_document(self, db_manager):
+        """Test is_flywheel_run_cancelled returns falsy value when document not found."""
+        run_id = "507f1f77bcf86cd799439011"
+        db_manager._flywheel_runs.find_one.return_value = None
+
+        result = db_manager.is_flywheel_run_cancelled(run_id)
+        # The method returns None (falsy) when document is not found, not False
+        assert not result
 
     def test_create_nim_run(self, db_manager):
         nim_run = NIMRun(
@@ -138,6 +241,51 @@ class TestTaskDBManager:
             db_manager.mark_nim_completed(nim_id, started_at)
 
             db_manager._nims.update_one.assert_called_once()
+
+    def test_mark_nim_completed_with_none_started_at(self, db_manager):
+        """Test mark_nim_completed with None started_at."""
+        nim_id = ObjectId()
+
+        with patch("src.api.db_manager.datetime") as mock_datetime:
+            mock_time = datetime.utcnow()
+            mock_datetime.utcnow.return_value = mock_time
+
+            db_manager.mark_nim_completed(nim_id, None)
+
+            expected_update = {
+                "status": NIMRunStatus.COMPLETED,
+                "deployment_status": DeploymentStatus.COMPLETED,
+                "finished_at": mock_time,
+                "runtime_seconds": 0.0,
+            }
+
+            db_manager._nims.update_one.assert_called_once_with(
+                {"_id": nim_id, "error": None},
+                {"$set": expected_update},
+            )
+
+    def test_mark_nim_cancelled(self, db_manager):
+        """Test marking NIM as cancelled."""
+        nim_id = ObjectId()
+        error_msg = "Cancelled by user"
+
+        with patch("src.api.db_manager.datetime") as mock_datetime:
+            mock_time = datetime.utcnow()
+            mock_datetime.utcnow.return_value = mock_time
+
+            db_manager.mark_nim_cancelled(nim_id, error_msg)
+
+            expected_update = {
+                "status": NIMRunStatus.CANCELLED,
+                "deployment_status": DeploymentStatus.CANCELLED,
+                "finished_at": mock_time,
+                "error": error_msg,
+            }
+
+            db_manager._nims.update_one.assert_called_once_with(
+                {"_id": nim_id, "error": None, "finished_at": None},
+                {"$set": expected_update},
+            )
 
     def test_mark_nim_error(self, db_manager):
         nim_id = ObjectId()
@@ -246,6 +394,57 @@ class TestTaskDBManager:
             {"flywheel_run_id": ObjectId(flywheel_run_id), "model_name": model_name}
         )
 
+    def test_mark_all_nims_status(self, db_manager):
+        """Test marking all NIMs status for a flywheel run."""
+        flywheel_run_id = "507f1f77bcf86cd799439011"
+        status = NIMRunStatus.FAILED
+        error_msg = "Test error"
+
+        with patch("src.api.db_manager.datetime") as mock_datetime:
+            mock_time = datetime.utcnow()
+            mock_datetime.utcnow.return_value = mock_time
+
+            db_manager.mark_all_nims_status(flywheel_run_id, status, error_msg)
+
+            expected_update = {
+                "error": error_msg,
+                "status": status,
+                "finished_at": mock_time,
+            }
+
+            db_manager._nims.update_many.assert_called_once_with(
+                {
+                    "flywheel_run_id": ObjectId(flywheel_run_id),
+                    "error": None,
+                },
+                {"$set": expected_update},
+            )
+
+    def test_mark_all_nims_status_without_error(self, db_manager):
+        """Test marking all NIMs status without error message."""
+        flywheel_run_id = ObjectId()
+        status = NIMRunStatus.CANCELLED
+
+        with patch("src.api.db_manager.datetime") as mock_datetime:
+            mock_time = datetime.utcnow()
+            mock_datetime.utcnow.return_value = mock_time
+
+            db_manager.mark_all_nims_status(flywheel_run_id, status)
+
+            expected_update = {
+                "error": None,
+                "status": status,
+                "finished_at": mock_time,
+            }
+
+            db_manager._nims.update_many.assert_called_once_with(
+                {
+                    "flywheel_run_id": flywheel_run_id,
+                    "error": None,
+                },
+                {"$set": expected_update},
+            )
+
     def test_insert_evaluation(self, db_manager):
         evaluation = NIMEvaluation(
             flywheel_run_id=ObjectId(),
@@ -311,7 +510,7 @@ class TestTaskDBManager:
 
     def test_create_llm_judge_run(self, db_manager):
         llm_judge_run = LLMJudgeRun(
-            flywheel_run_id=ObjectId(), model_name="test-model", type="remote"
+            flywheel_run_id=ObjectId(), model_name="test-model", deployment_type="remote"
         )
         mock_result = Mock()
         mock_result.inserted_id = ObjectId()
@@ -348,6 +547,23 @@ class TestTaskDBManager:
             },
         )
 
+    def test_mark_llm_judge_cancelled(self, db_manager):
+        """Test marking LLM judge as cancelled."""
+        flywheel_run_id = ObjectId()
+        error_msg = "Cancelled by user"
+
+        db_manager.mark_llm_judge_cancelled(flywheel_run_id, error_msg)
+
+        expected_update = {
+            "deployment_status": DeploymentStatus.CANCELLED.value,
+            "error": error_msg,
+        }
+
+        db_manager.llm_judge_runs.update_one.assert_called_once_with(
+            {"flywheel_run_id": flywheel_run_id},
+            {"$set": expected_update},
+        )
+
     def test_find_llm_judge_run(self, db_manager):
         flywheel_run_id = "507f1f77bcf86cd799439011"
         expected_result = {"_id": ObjectId(), "model_name": "test-model"}
@@ -369,6 +585,45 @@ class TestTaskDBManager:
 
         assert result == expected_result
         db_manager._flywheel_runs.find_one.assert_called_once_with({"_id": ObjectId(job_id)})
+
+    def test_find_running_flywheel_runs(self, db_manager):
+        """Test finding all running flywheel runs."""
+        expected_results = [
+            {"_id": ObjectId(), "status": FlywheelRunStatus.RUNNING},
+            {"_id": ObjectId(), "status": FlywheelRunStatus.PENDING},
+        ]
+        db_manager._flywheel_runs.find.return_value = expected_results
+
+        results = db_manager.find_running_flywheel_runs()
+
+        assert results == expected_results
+        running_statuses = [FlywheelRunStatus.PENDING.value, FlywheelRunStatus.RUNNING.value]
+        db_manager._flywheel_runs.find.assert_called_once_with(
+            {"status": {"$in": running_statuses}}
+        )
+
+    def test_find_running_nims_for_flywheel(self, db_manager):
+        """Test finding running NIMs for a flywheel run."""
+        flywheel_run_id = ObjectId()
+        expected_results = [
+            {"_id": ObjectId(), "status": NIMRunStatus.RUNNING},
+            {"_id": ObjectId(), "status": NIMRunStatus.PENDING},
+        ]
+        db_manager._nims.find.return_value = expected_results
+
+        results = db_manager.find_running_nims_for_flywheel(flywheel_run_id)
+
+        assert results == expected_results
+        expected_query = {
+            "flywheel_run_id": flywheel_run_id,
+            "status": {
+                "$in": [
+                    NIMRunStatus.RUNNING.value,
+                    NIMRunStatus.PENDING.value,
+                ]
+            },
+        }
+        db_manager._nims.find.assert_called_once_with(expected_query)
 
     def test_find_nims_for_job(self, db_manager):
         job_id = ObjectId()
@@ -403,11 +658,45 @@ class TestTaskDBManager:
     def test_delete_job_records(self, db_manager):
         job_id = ObjectId()
 
+        # Mock the nim records that would be found
+        mock_nim_records = [
+            {"_id": ObjectId()},
+            {"_id": ObjectId()},
+        ]
+        nim_ids = [nim["_id"] for nim in mock_nim_records]
+
+        # Set up the mock to return the nim records when find is called
+        db_manager._nims.find.return_value = mock_nim_records
+
         db_manager.delete_job_records(job_id)
 
-        # Verify all delete operations were called
-        db_manager._evaluations.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
-        db_manager._customizations.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
+        # Verify the find operation was called to get nim IDs
+        db_manager._nims.find.assert_called_once_with({"flywheel_run_id": job_id}, {"_id": 1})
+
+        # Verify all delete operations were called with correct parameters
+        db_manager._evaluations.delete_many.assert_called_once_with({"nim_id": {"$in": nim_ids}})
+        db_manager._customizations.delete_many.assert_called_once_with({"nim_id": {"$in": nim_ids}})
+        db_manager._nims.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
+        db_manager.llm_judge_runs.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
+        db_manager._flywheel_runs.delete_one.assert_called_once_with({"_id": job_id})
+
+    def test_delete_job_records_no_nims(self, db_manager):
+        """Test delete_job_records when no NIMs are found for the job."""
+        job_id = ObjectId()
+
+        # Set up the mock to return empty list (no nim records found)
+        db_manager._nims.find.return_value = []
+
+        db_manager.delete_job_records(job_id)
+
+        # Verify the find operation was called to get nim IDs
+        db_manager._nims.find.assert_called_once_with({"flywheel_run_id": job_id}, {"_id": 1})
+
+        # Verify evaluations and customizations delete_many are NOT called when no nim_ids
+        db_manager._evaluations.delete_many.assert_not_called()
+        db_manager._customizations.delete_many.assert_not_called()
+
+        # Verify remaining delete operations were still called
         db_manager._nims.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
         db_manager.llm_judge_runs.delete_many.assert_called_once_with({"flywheel_run_id": job_id})
         db_manager._flywheel_runs.delete_one.assert_called_once_with({"_id": job_id})

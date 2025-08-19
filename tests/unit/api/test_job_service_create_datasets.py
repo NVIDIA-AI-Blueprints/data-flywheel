@@ -107,6 +107,7 @@ class TestJobServiceCreateDatasets:
         mock_data_uploader,
         sample_es_data,
         monkeypatch,
+        mock_dms_client,
     ):
         """Test successful dataset creation and validate in job details"""
         # Adjust settings to match the sample data size
@@ -159,6 +160,7 @@ class TestJobServiceCreateDatasets:
         tweak_settings,
         mock_data_uploader,
         empty_es_data,
+        mock_dms_client,
     ):
         """Test dataset creation with empty data"""
         # Setup mock data
@@ -166,7 +168,8 @@ class TestJobServiceCreateDatasets:
         with pytest.raises(ValueError) as exc_info:
             create_datasets(task_result_setup)
 
-        assert "No records found for the given" in str(exc_info.value)
+        # The error message now comes from DataValidator instead of RecordExporter
+        assert "Not enough records found for the given workload" in str(exc_info.value)
 
         # Get job details and validate empty datasets
         job_result = get_job_details(test_db_empty_datasets["flywheel_run_id"])
@@ -196,6 +199,7 @@ class TestJobServiceCreateDatasets:
         error_type,
         error_message,
         expected_message,
+        mock_dms_client,
     ):
         """Test dataset creation error handling"""
         # Mock ES client to raise an error
@@ -224,6 +228,7 @@ class TestJobServiceCreateDatasets:
         mock_data_uploader,
         sample_es_data,
         monkeypatch,
+        mock_dms_client,
     ):
         """Test dataset creation when database update fails"""
         # Adjust settings to match the sample data size
@@ -248,6 +253,7 @@ class TestJobServiceCreateDatasets:
         mock_data_uploader,
         sample_es_data,
         monkeypatch,
+        mock_dms_client,
     ):
         """Test that create_datasets preserves existing fields in TaskResult"""
         # Adjust settings to match the sample data size
@@ -260,7 +266,9 @@ class TestJobServiceCreateDatasets:
             workload_id="test-workload",
             flywheel_run_id=str(ObjectId()),
             client_id="test-client",
-            llm_judge_config=LLMJudgeConfig(**{"type": "remote", "model_name": "test-judge"}),
+            llm_judge_config=LLMJudgeConfig(
+                **{"deployment_type": "remote", "model_name": "test-judge"}
+            ),
             error=None,
             evaluations={},
         )
@@ -286,6 +294,7 @@ class TestJobServiceCreateDatasets:
         mock_data_uploader,
         sample_es_data,
         sample_split_config,
+        mock_dms_client,
     ):
         """Test dataset creation with custom split configuration"""
         # Setup mock data
@@ -354,10 +363,12 @@ class TestJobServiceCreateDatasets:
         tweak_settings,
         mock_data_uploader,
         sample_es_data,
+        mock_dms_client,
     ):
         """Test dataset creation with invalid split configuration"""
         # Setup mock data with only 10 records
         mock_es_data = {
+            "_scroll_id": "scroll123",
             "hits": {
                 "hits": [
                     {
@@ -381,7 +392,7 @@ class TestJobServiceCreateDatasets:
                     }
                     for i in range(10)
                 ]
-            }
+            },
         }
         mock_es_client.search.return_value = mock_es_data
 
@@ -411,6 +422,7 @@ class TestJobServiceCreateDatasets:
         mock_data_uploader,
         sample_es_data,
         sample_split_config,
+        mock_dms_client,
     ):
         """Test that create_datasets preserves the data_split_config in TaskResult"""
         # Setup mock data
@@ -423,7 +435,9 @@ class TestJobServiceCreateDatasets:
             workload_id="test-workload",
             flywheel_run_id=str(ObjectId()),
             client_id="test-client",
-            llm_judge_config=LLMJudgeConfig(**{"type": "remote", "model_name": "test-judge"}),
+            llm_judge_config=LLMJudgeConfig(
+                **{"deployment_type": "remote", "model_name": "test-judge"}
+            ),
             error=None,
             evaluations={},
             data_split_config=split_config,

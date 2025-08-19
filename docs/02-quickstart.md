@@ -14,21 +14,14 @@ This quickstart provides an initial [AIVA dataset](../data/aiva_primary_assistan
 | Cluster | Single-node NVIDIA GPU cluster on Linux with cluster-admin permissions |
 | Disk Space | At least 200 GB free |
 | Software | Python 3.11<br>Docker Engine<br>Docker Compose v2 |
-| Services | Elasticsearch 8.12.2<br>MongoDB 7.0<br>Redis 7.2<br>FastAPI (API server)<br>Celery (task processing) |
-| Resource | **Minimum Memory**: 1 GB (512 MB reserved for Elasticsearch)<br>**Storage**: Varies by log volume or model size<br>**Network**: Ports 8000 (API), 9200 (Elasticsearch), 27017 (MongoDB), 6379 (Redis) |
-| Development | Docker Compose for local development with hot reloading<br>Supports macOS (Darwin) and Linux<br>Optional: GPU support for model inference |
-| Production | Kubernetes cluster (recommended)<br>Resources scale with workload<br>Persistent volume support for data storage |
+
+> **📖 For complete system requirements:** See [System Requirements](03-configuration.md#system-requirements)
 
 ### Obtain an NGC API Key and Log In
 
-You must [generate a personal API key](https://org.ngc.nvidia.com/setup/api-keys) with the `NGC catalog` and `Public API Endpoints` services selected. This lets you:
+You must [generate a personal API key](https://org.ngc.nvidia.com/setup/api-keys) with the `NGC catalog` and `Public API Endpoints` services selected.
 
-- Complete deployment of NMP (NeMo Microservices Platform)
-- Access NIM services
-- Access models hosted in the NVIDIA API Catalog
-- Download models on-premises
-
-For detailed steps, see the official [NGC Private Registry User Guide](https://docs.nvidia.com/ngc/gpu-cloud/ngc-private-registry-user-guide/index.html#generating-personal-api-key).
+> **📖 For all required API keys:** See [Required API Keys and Access](03-configuration.md#required-api-keys-and-access)
 
 ### Install and Configure Git LFS
 
@@ -59,6 +52,9 @@ Authenticate with NGC using `NGC login`. For detailed instructions, see the [NGC
 
 To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/latest/get-started/setup/index.html) beginner tutorial. These instructions launch NMP using a local Minikube cluster.
 
+> **Note**
+> Data Flywheel Blueprint has been tested and is compatible with NeMo Microservices Platform (NMP) version 25.8.0.
+
 **Use Manual Installation Only**
 
 For the Data Flywheel Blueprint, use the [Install Manually](https://docs.nvidia.com/nemo/microservices/latest/get-started/setup/minikube-manual.html) option. The deployment scripts option should be avoided as it deploys models outside the namespace of the Data Flywheel and can cause conflict.
@@ -73,24 +69,16 @@ Enable customization for the models
 >   enabled: true
 >   modelsStorage:
 >     storageClassName: standard
+>   customizationTargets:
+>     overrideExistingTargets: true
+>     targets:
+>       meta/llama-3.2-1b-instruct@2.0:
+>         enabled: true
+>       meta/llama-3.2-3b-instruct@2.0:
+>         enabled: true
+>       meta/llama-3.1-8b-instruct@2.0:
+>         enabled: true
 >   customizerConfig:
->     models:
->       meta/llama-3.2-1b-instruct:
->         enabled: true
->       meta/llama-3.2-3b-instruct:
->         enabled: true
->         model_path: llama-3_2-3b-instruct
->         training_options:
->         - finetuning_type: lora
->           num_gpus: 1
->           training_type: sft
->       meta/llama-3.1-8b-instruct:
->         enabled: true
->         model_path: llama-3_1-8b-instruct
->         training_options:
->         - finetuning_type: lora
->           num_gpus: 1
->           training_type: sft
 >     training:
 >       pvc:
 >         storageClass: "standard"
@@ -102,6 +90,25 @@ Enable customization for the models
 
 ### 3. Configure Data Flywheel
 
+Before setting up environment variables, it's important to understand the key configuration concepts:
+
+#### Configuration Overview
+
+The Data Flywheel Blueprint uses a configuration file (`config/config.yaml`) that defines:
+
+- **Model Deployments**: All candidate models (NIMs) are deployed locally in your cluster for evaluation and customization
+- **LLM Judge**: Can be configured as either:
+  - **Local deployment**: Runs as a NIM in your cluster (requires additional GPU resources)
+  - **Remote deployment**: Uses external API endpoints (recommended for resource efficiency)
+- **Evaluation Settings**: Controls how models are evaluated, including data splitting and in-context learning
+- **Training Parameters**: Defines fine-tuning settings for model customization
+
+> **Important:** After starting the Data Flywheel services, wait 4-5 minutes for all deployments to be ready before starting your first job. This delay is normal during the initialization phase as the system sets up model deployments and services.
+
+> **📖 For complete configuration details:** See the [Configuration Guide](03-configuration.md)
+
+#### Environment Setup
+
 1. Set up the required environment variables:
 
    Create an NGC API key by following the instructions at [Generating NGC API Keys](https://docs.nvidia.com/ngc/gpu-cloud/ngc-private-registry-user-guide/index.html#generating-api-key).
@@ -110,7 +117,31 @@ Enable customization for the models
    export NGC_API_KEY="<your-ngc-api-key>"
    ```
 
-   For a complete list of environment variables and their descriptions, see the [Environment Variables section](03-configuration.md#environment-variables) in the Configuration Guide.
+2. Set up the NVIDIA API key for remote configurations:
+
+   Go to [build.nvidia.com](https://build.nvidia.com) and generate an NVIDIA API key, then export it:
+
+   ```bash
+   export NVIDIA_API_KEY="<your-nvidia-api-key>"
+   ```
+
+   > **Note:** The `NGC_API_KEY` is only needed for NGC login and container downloads. The `NVIDIA_API_KEY` is used for remote API access to NVIDIA services.
+
+3. **Optional:** For remote configurations, if you want to use different API keys for LLM judge and embedding services, you can set custom environment variables:
+
+   ```bash
+   # For remote LLM judge services
+   export LLM_JUDGE_API_KEY=<your-llm-judge-api-key>
+
+   # For remote embedding services  
+   export EMB_API_KEY=<your-embedding-api-key>
+   ```
+
+   > **Note:** If you don't set these custom variables, the system will use `NVIDIA_API_KEY` as the default for both remote services.
+   >
+   > **Tip:** You can use API keys from any provider (OpenAI, Anthropic, etc.) by setting them to `LLM_JUDGE_API_KEY` or `EMB_API_KEY` for remote configurations.
+
+   > **📖 For complete environment setup:** See [Environment Variables](03-configuration.md#environment-variables)
 
 2. Clone the repository:
 
@@ -122,36 +153,7 @@ Enable customization for the models
 
 3. Review and modify the [configuration file](../config/config.yaml) according to your requirements.
 
-   **About the Configuration File**
-
-   The `config.yaml` file controls which models (NIMs) are deployed and how the system runs. The main sections are:
-
-   - `nmp_config`: URLs and namespace for your NMP deployment.
-   - `nims`: List of models to deploy. Each entry lets you set the model name, context length, GPU count, and other options. Uncomment or add entries to test different models.
-   - `data_split_config`: How your data is split for training, validation, and evaluation.
-   - `icl_config`: Settings for in-context learning (ICL) examples.
-   - `training_config` and `lora_config`: Training and fine-tuning parameters.
-   - `logging_config`: Settings for logging. You can configure the logging level (for example, `DEBUG`, `INFO`, `WARNING`, `ERROR`, or `CRITICAL`). The default is `INFO`.
-   - `llm_judge_config`: Large language model (LLM) as judge configuration. By default, the blueprint uses a self-hosted judge LLM, but you can switch to a remote LLM of your choice.
-
-   **Example: Adding a New NIM**
-
-   ```yaml
-   nims:
-     - model_name: "meta/llama-3.2-1b-instruct"
-       context_length: 32768
-       gpus: 1
-       pvc_size: 25Gi
-       tag: "1.8.3"
-       customization_enabled: true
-     - model_name: "meta/llama-3.1-8b-instruct"
-       context_length: 32768
-       gpus: 1
-       pvc_size: 25Gi
-       tag: "1.8.3"
-   ```
-
-   For more details, see the comments in the configuration file.
+   > **📖 For all configuration options:** See [Model Integration & Settings](03-configuration.md#model-integration)
 
 ### 4. Start Services
 
@@ -180,12 +182,74 @@ You have several options to start the services:
    docker compose -f ./deploy/docker-compose.yaml up --build
    ```
 
+   **To start with MLflow enabled:**
+
+   ```bash
+   export COMPOSE_PROFILES=mlflow && docker compose -f deploy/docker-compose.yaml up -d --build
+   ```
+
+   **Using Environment Files:**
+
+   If you want to use an `.env` file to store all environment variables, you have two options:
+
+   - **Option 1:** Store the `.env` file in the `deploy/` folder (Docker Compose default location):
+     ```bash
+     # Place your .env file at deploy/.env
+     docker compose -f ./deploy/docker-compose.yaml up --build
+     ```
+
+   - **Option 2:** Use a custom `.env` file location with the `--env-file` argument:
+     ```bash
+     # Example: Using .env file at the root of the repo
+     docker compose -f ./deploy/docker-compose.yaml --env-file .env up --build
+     ```
+
+   **Example `.env` file contents:**
+
+   ```bash
+   # API Keys for NVIDIA services
+   NVIDIA_API_KEY=nvapi-your-nvidia-api-key-here
+   NGC_API_KEY=nvapi-your-ngc-api-key-here
+   
+   # Hugging Face token for data uploading
+   HF_TOKEN=hf_your-huggingface-token-here
+   
+   # Optional: Override API keys for specific services
+   LLM_JUDGE_API_KEY=your-custom-llm-judge-api-key
+   EMB_API_KEY=your-custom-embedding-api-key
+   
+   # Docker Compose profiles (enable MLflow)
+   COMPOSE_PROFILES=mlflow
+   
+   # Optional: Database connection overrides
+   MONGODB_URL=mongodb://localhost:27017
+   REDIS_URL=redis://localhost:6379/0
+   ELASTICSEARCH_URL=http://localhost:9200
+   ```
+
+   > **Note:** The `--env-file` argument allows you to specify any `.env` file location in your repository.
+
+   > **MLflow Integration**
+   >
+   > MLflow is controlled by a single environment variable:
+   > - Set `COMPOSE_PROFILES=mlflow` to enable both the MLflow Docker service and configuration
+   > - The MLflow service will be available at `http://localhost:5000`
+   > - MLflow configuration is automatically enabled when the profile is active
+
+4. **Production Deployment:** Use Helm for Kubernetes deployment:
+
+   For production environments or Kubernetes-based deployments, you can use Helm to deploy the Data Flywheel Blueprint.
+
+   > **📖 For complete Helm deployment instructions:** See [Helm Installation Guide](11-helm-installation.md)
+
 ### 5. Load Data
 
 You can feed data to the Flywheel in two ways:
 
 1. **Manually:** For demo or short-lived environments, use the provided `load_test_data.py` script.
-2. **Automatically:** For production environments where you deploy the blueprint to run continuously, use a [continuous log exportation flow](./01-architecture.md#how-production-logs-flow-into-the-flywheel).
+2. **Automatically:** For production environments where you deploy the blueprint to run continuously, use a [continuous log exportation flow](./01-architecture.md#how-production-logs-flow-into-the-flywheel). For production deployment setup, see the [Helm Installation Guide](11-helm-installation.md).
+
+> **📖 For complete implementation guide:** See [Data Logging for AI Apps](data-logging.md)
 
 Use the provided script and demo datasets to quickly experience the value of the Flywheel service.
 
@@ -271,10 +335,9 @@ Each line in your dataset file should follow this structure, which is compatible
 
 Now that you've got the Data Flywheel running and loaded with data, you can start running jobs.
 
-> **Tip**:
-> Review the [API spec](../openapi.json) for all available endpoints and request/response formats.
+### Quick Start Example
 
-### Using Curl
+> **Important:** After starting the Data Flywheel services, wait 4-5 minutes for all deployments to be ready before starting your first job. This delay is normal during the initialization phase as the system sets up model deployments and services.
 
 #### Start Job
 
@@ -284,123 +347,23 @@ curl -X POST http://localhost:8000/api/jobs \
 -d '{"workload_id": "primary_assistant", "client_id": "aiva-1"}'
 ```
 
-#### Create Job with Custom Data Split Configuration
-
-You can customize the data split configuration by passing a `data_split_config` object in the POST request. This lets you override the default values for evaluation size, validation ratio, and other parameters at job creation time:
-
-```bash
-curl -X POST http://localhost:8000/api/jobs \
--H "Content-Type: application/json" \
--d '{
-  "workload_id": "primary_assistant",
-  "client_id": "aiva-1",
-  "data_split_config": {
-    "eval_size": 30,
-    "val_ratio": 0.15,
-    "min_total_records": 100,
-    "random_seed": 42
-  }
-}'
-```
-
-The `data_split_config` is optional—if you don't provide it, the default values from the configuration file are used. You can also provide a partial configuration—any parameters you don't specify in the POST request use their default values. For example, if you only specify `eval_size`, all other parameters (`val_ratio`, `min_total_records`, and so on) use their default values from the configuration file. For detailed information about configuration options and their default values, see the [Data Split Configuration section](03-configuration.md#data-split-configuration) in the Configuration Guide.
-
-#### Check Job Status and Results
+#### Check Job Status
 
 ```bash
 curl -X GET http://localhost:8000/api/jobs/:job-id -H "Content-Type: application/json"
 ```
 
-#### Cancel Job
-
-If you need to stop a job that's currently running, you can cancel it using the cancel endpoint. This stops the job execution and marks it as cancelled:
-
-```bash
-curl -X POST http://localhost:8000/api/jobs/:job-id/cancel \
--H "Content-Type: application/json"
-```
-
-> **Important**: 
-> - The job must be in a running state to be cancelled. Already finished jobs can't be cancelled.
-> - If the job is already cancelled, the endpoint returns a message indicating the job is already cancelled.
-
-##### Cancel Job Response Schema
-
-When cancelling a job, you'll receive a JSON response with the following structure:
-
-```json
-{
-  "id": "65f8a1b2c3d4e5f6a7b8c9d0",                 // Job identifier
-  "message": "Job cancellation initiated successfully." // Confirmation message
-}
-```
-
-##### Possible Error Responses
-
-- **404 Not Found**: Job with the specified ID doesn't exist
-- **400 Bad Request**: Job has already finished or invalid job ID format
-
-> **Note**: To verify the cancellation status, use the GET `/api/jobs/{job_id}` endpoint to check the updated job status.
-
-#### Delete Job and Resources
-
- To permanently remove a job and all its associated resources from the database, use the delete endpoint. This is useful for cleanup or removing jobs you no longer need:
-
- ```bash
- curl -X DELETE http://localhost:8000/api/jobs/:job-id \
- -H "Content-Type: application/json"
- ```
-
- > **Important**:
- >
- > - If the job is still running, you must cancel it first using the cancel endpoint before you can delete it.
- > - This is an asynchronous operation—the endpoint returns immediately while the deletion continues in the background.
- > - All associated resources, including datasets, evaluations, and customizations, are removed.
-
-#### Delete Job Response Schema
-
-When deleting a job, you'll receive a JSON response with the following structure:
-
-```json
-{
- "id": "65f8a1b2c3d4e5f6a7b8c9d0",                              // Job identifier
- "message": "Job deletion started. Resources will be cleaned up in the background." // Confirmation message
-}
-```
-
-##### Possible Error Responses
-
-- **404 Not Found**: Job with the specified ID doesn't exist
-- **400 Bad Request**: Job is still running (must be cancelled first) or invalid job ID format
-- **500 Internal Server Error**: Failed to initiate job deletion
-
-> **Note**: Once a job is deleted, it's permanently removed from the database. Subsequent calls to GET `/api/jobs/{job_id}` return a 404 Not Found error.
-
-#### Job Response Schema
-
-When querying a job, you'll receive a JSON response with the following structure:
-
-```json
-{
- "id": "65f8a1b2c3d4e5f6a7b8c9d0",          // Unique job identifier
- "workload_id": "primary_assistant",               // Workload being processed
- "client_id": "aiva-1",                // Client identifier
- "status": "running",                        // Current job status
- "started_at": "2024-03-15T14:30:00Z",      // Job start timestamp
- "finished_at": "2024-03-15T15:30:00Z",      // Job completion timestamp (if finished)
- "num_records": 1000,                        // Number of processed records
- "llm_judge": { ... },                       // LLM Judge model status
- "nims": [ ... ],                           // List of NIMs and their evaluation results
- "datasets": [ ... ]                        // List of datasets used in the job
-}
-```
-
-> **Note:**
-> When a job starts, all NIMs specified in your configuration are immediately included in the `nims` list of the job response, each with a status of `"Pending"`. This is true even if NIMs are executed sequentially. The `Pending` status indicates that the NIM is scheduled for evaluation as part of the job. As the job progresses, each NIM's status will update (e.g., to `Running`, `Completed`, or `Error`) to reflect its current state. This approach provides a transparent and accurate view of the job's overall progress and planned evaluations.
+> **📖 For complete API documentation:** See [API Reference](07-api-reference.md)
+> 
+> The API Reference includes detailed information on:
+> - All available endpoints and parameters
+> - Request/response schemas
+> - Error handling
+> - Job cancellation and deletion
+> - Custom data split configuration
+> - Python integration examples
 
 ### Using Notebooks
-
-> **Note:** Make sure all services are running before accessing the Jupyter Lab interface.
 
 1. Launch Jupyter Lab using uv:
 
@@ -415,13 +378,13 @@ When querying a job, you'll receive a JSON response with the following structure
 
 2. Access Jupyter Lab in your browser at `http://<your-host-ip>:8889`.
 3. Navigate to the `notebooks` directory.
-4. Open the example notebook for running and monitoring jobs.
+4. Open the example notebook for running and monitoring jobs: [data-flywheel-bp-tutorial.ipynb](../notebooks/data-flywheel-bp-tutorial.ipynb)
 
 Follow the instructions in the Jupyter Lab notebook to interact with the Data Flywheel services.
 
 ## Evaluate Results
 
-Refer to [Evaluation Types and Metrics Documentation](docs/06-evaluation-types-and-metrics.md) to learn more about how to evaluate results.
+> **📖 For detailed evaluation information:** See [Evaluation Types and Metrics](06-evaluation-types-and-metrics.md)
 
 ## Cleanup
 
@@ -435,40 +398,24 @@ When you're done using the services, you can stop them using the stop script:
 
 ### 2. Resource Cleanup
 
-The Data Flywheel Blueprint provides two types of resource cleanup:
-
 #### Automatic Cleanup (During System Shutdown)
 
-The system automatically cleans up running resources when workers are shut down gracefully. This happens automatically when:
+The system automatically cleans up running resources through the `CleanupManager` when Celery workers are shut down gracefully. This happens automatically when:
 - Docker containers are stopped (`docker compose down`)
-- Celery workers receive shutdown signals
+- Celery workers receive shutdown signals (SIGTERM, SIGINT)
 - The system is restarted
 
-The automatic cleanup manager:
-- Detects all running flywheel runs and NIMs
-- Cancels active customization jobs
-- Shuts down running deployments
-- Marks all resources as cancelled in the database
+The `CleanupManager` automatically:
+1. **Finds all running flywheel runs** from the database with `PENDING` or `RUNNING` status
+2. **Identifies running NIMs** with `RUNNING` deployment status for each flywheel run
+3. **Cancels active customization jobs** for each running NIM
+4. **Shuts down NIM deployments** using the DMS client
+5. **Shuts down LLM judge deployments** (if running locally)
+6. **Marks all resources as cancelled** in the database with appropriate error messages
+
+The cleanup is triggered by the `worker_shutting_down` signal in the Celery worker, ensuring that all resources are properly cleaned up even during unexpected shutdowns.
 
 For technical details about the automatic cleanup process, see the [Architecture Overview](01-architecture.md#automatic-resource-cleanup).
-
-#### Manual Cleanup (For Maintenance)
-
-If you need to manually clean up all running resources—flywheel runs, NIMs, evaluations, and customizations—use the cleanup script:
-
-```bash
-# Run the cleanup script
-./scripts/cleanup_resources.sh
-```
-
-This script will:
-
-- Find all running flywheel runs from MongoDB
-- Shut down all running NIMs and LLM judge deployments
-- Cancel running customization jobs and delete evaluation jobs
-- Mark all resources as cancelled in the database
-
-For detailed information about the cleanup process, safety features, and troubleshooting, see the [Scripts Documentation](scripts.md).
 
 ### 3. Clear Volumes
 
@@ -496,3 +443,7 @@ If you encounter any issues:
 ## Additional Resources
 
 - [Data Flywheel Blueprint Repository](https://github.com/NVIDIA-AI-Blueprints/data-flywheel)
+
+## Next Steps
+
+Learn how to deploy the Data Flywheel Blueprint on Kubernetes using Helm charts for scalable, production-ready environments by following the [Helm Install Guide](11-helm-installation.md).

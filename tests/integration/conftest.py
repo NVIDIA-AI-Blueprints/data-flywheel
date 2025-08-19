@@ -13,42 +13,21 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 import os
-import uuid
 from collections.abc import Generator
 from datetime import datetime
 from typing import Any
 from unittest.mock import MagicMock, patch
 
 import pytest
-from bson import ObjectId
 
-from src.api.models import FlywheelRun
+from src.api.models import FlywheelRun, TaskResult
 from src.config import settings
-from src.log_utils import setup_logging
 
 os.environ["ELASTICSEARCH_URL"] = "http://localhost:9200"
 os.environ["REDIS_URL"] = "redis://localhost:6379/1"
 os.environ["MONGODB_URL"] = "mongodb://localhost:27017"
 os.environ["ES_COLLECTION_NAME"] = "flywheel-test"
 os.environ["MONGODB_DB"] = "flywheel-test"
-
-
-@pytest.fixture(scope="session")
-def test_workload_id() -> str:
-    """Generate a unique workload ID for each test."""
-    return f"test-workload-{uuid.uuid4()}"
-
-
-@pytest.fixture(scope="session")
-def client_id() -> str:
-    """Generate a unique client ID for each test."""
-    return f"test-client-{uuid.uuid4()}"
-
-
-@pytest.fixture(scope="session")
-def flywheel_run_id() -> str:
-    """Generate a unique flywheel run ID for each test."""
-    return str(ObjectId())
 
 
 @pytest.fixture(scope="session")
@@ -59,47 +38,6 @@ def mongo_db():
     init_db()
     db = get_db()
     yield db
-
-
-@pytest.fixture
-def load_test_data_fixture(test_workload_id: str, client_id: str) -> Generator:
-    """Fixture to load test data for each test and clean it up afterward."""
-    from src.lib.integration.es_client import ES_COLLECTION_NAME, get_es_client
-    from src.scripts.load_test_data import load_data_to_elasticsearch
-
-    logger = setup_logging("data_flywheel.test_fixture")
-
-    # Load test data for this specific test
-    load_data_to_elasticsearch(test_workload_id, client_id, file_path="aiva-test.jsonl")
-
-    yield  # Test runs here
-
-    # Cleanup: Delete all records for this test's workload_id and client_id
-    es = get_es_client()
-    try:
-        # Delete all documents matching this test's workload_id and client_id
-        delete_query = {
-            "query": {
-                "bool": {
-                    "must": [
-                        {"term": {"workload_id": test_workload_id}},
-                        {"term": {"client_id": client_id}},
-                    ]
-                }
-            }
-        }
-
-        result = es.delete_by_query(index=ES_COLLECTION_NAME, body=delete_query)
-        logger.info(
-            f"Cleaned up {result.get('deleted', 0)} test records for workload_id={test_workload_id}, client_id={client_id}"
-        )
-
-        # Refresh the index to make the deletions immediately visible
-        es.indices.refresh(index=ES_COLLECTION_NAME)
-
-    except Exception as e:
-        logger.warning(f"Failed to clean up test data: {e}")
-        # Don't fail the test if cleanup fails
 
 
 # === Data Validation Test Fixtures ===
@@ -140,6 +78,64 @@ def mock_external_services_validation() -> Generator[dict[str, MagicMock], None,
 
 
 @pytest.fixture
+def mock_embedding_nim() -> Generator[MagicMock, None, None]:
+    """Mock the Embedding NIM to simulate embedding generation."""
+    with patch("src.lib.flywheel.icl_selection.Embedding") as mock_embedding_class:
+        mock_embedding_instance = MagicMock()
+
+        def mock_get_embeddings_batch(queries, input_type="query"):
+            # Return a unique, properly dimensioned vector for each query
+            return [[0.1 + 0.01 * i] * 2048 for i in range(len(queries))]
+
+        mock_embedding_instance.get_embeddings_batch.side_effect = mock_get_embeddings_batch
+        mock_embedding_class.return_value = mock_embedding_instance
+        yield mock_embedding_instance
+
+
+@pytest.fixture
+def icl_test_setup(
+    test_workload_id,
+    client_id,
+    mongo_db,
+    index_test_data,
+    monkeypatch,
+):
+    """A comprehensive fixture for setting up ICL integration tests."""
+    # Create the flywheel run
+    flywheel_run = FlywheelRun(
+        workload_id=test_workload_id,
+        client_id=client_id,
+        started_at=datetime.utcnow(),
+    )
+    result = mongo_db.flywheel_runs.insert_one(flywheel_run.to_mongo())
+    flywheel_run_id = str(result.inserted_id)
+
+    # Common settings adjustments
+    monkeypatch.setattr(settings.data_split_config, "min_total_records", 20)
+    monkeypatch.setattr(settings.data_split_config, "eval_size", 5)
+
+    # Index standard test data
+    test_data = [
+        {
+            "workload_id": test_workload_id,
+            "request": {"messages": [{"role": "user", "content": f"Question {i}"}]},
+            "response": {"choices": [{"message": {"role": "assistant", "content": f"Answer {i}"}}]},
+        }
+        for i in range(20)
+    ]
+    index_test_data(test_data, test_workload_id, client_id)
+
+    # Provide the initial TaskResult
+    init_result = TaskResult(
+        workload_id=test_workload_id,
+        flywheel_run_id=flywheel_run_id,
+        client_id=client_id,
+    )
+
+    return init_result, monkeypatch
+
+
+@pytest.fixture
 def validation_test_settings(monkeypatch):
     """Configure settings for validation tests with deterministic values."""
     # Data-split parameters
@@ -153,6 +149,11 @@ def validation_test_settings(monkeypatch):
     # NMP namespace
     new_nmp_cfg = settings.nmp_config.model_copy(update={"nmp_namespace": "test-namespace"})
     monkeypatch.setattr(settings, "nmp_config", new_nmp_cfg, raising=True)
+
+    # ICL config - use uniform_distribution to avoid embedding API issues
+    monkeypatch.setattr(
+        settings.icl_config, "example_selection", "uniform_distribution", raising=False
+    )
 
     yield
 

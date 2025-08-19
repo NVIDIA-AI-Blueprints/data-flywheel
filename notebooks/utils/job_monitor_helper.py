@@ -20,7 +20,6 @@ import requests
 from datetime import datetime
 from IPython.display import clear_output
 from pathlib import Path
-from notebooks.utils.mlflow_helper import download_and_process_eval, upload_result_to_mlflow
 
 def format_runtime(seconds):
     """Format runtime in seconds to a human-readable string."""
@@ -100,23 +99,16 @@ def get_job_status(api_base_url, job_id):
     response.raise_for_status()
     return response.json()
 
-def monitor_job(api_base_url, job_id, poll_interval, mlflow_uri=None, enable_mlflow_upload=False):
+def monitor_job(api_base_url, job_id, poll_interval):
     """Monitor a job and display its progress in a table.
     
     Args:
         api_base_url: Base URL for the API
         job_id: Job ID to monitor
         poll_interval: Polling interval in seconds
-        mlflow_uri: MLflow tracking URI (required if enable_mlflow_upload=True)
-        enable_mlflow_upload: Whether to enable automatic MLflow upload for completed evaluations
     """
     print(f"Monitoring job {job_id}...")
     print("Press Ctrl+C to stop monitoring")
-    
-    if enable_mlflow_upload:
-        if not mlflow_uri:
-            raise ValueError("mlflow_uri is required when enable_mlflow_upload=True")
-        print(f"MLflow integration enabled - will upload completed evaluations to {mlflow_uri}")
     
     # Track completed evaluations to avoid duplicate uploads
     completed_evaluations = set()
@@ -125,50 +117,6 @@ def monitor_job(api_base_url, job_id, poll_interval, mlflow_uri=None, enable_mlf
         try:
             clear_output(wait=True)
             job_data = get_job_status(api_base_url, job_id)
-            
-            # Check for newly completed evaluations and trigger MLflow upload
-            if enable_mlflow_upload:
-                print("Uploading completed evaluations to MLflow...")
-                for nim in job_data["nims"]:
-                    model_name = nim["model_name"]
-                    for eval_data in nim["evaluations"]:
-                        # Extract eval_id from nmp_uri
-                        nmp_eval_uri = eval_data.get('nmp_uri', '')
-                        eval_id = nmp_eval_uri.split('/')[-1] if nmp_eval_uri else None
-                        
-                        # Create unique key for this evaluation
-                        eval_key = f"{model_name}_{eval_data['eval_type']}_{eval_id or 'unknown'}"
-                        
-                        # Check if evaluation is completed and not already processed
-                        if eval_data.get("finished_at") and eval_key not in completed_evaluations:
-                            completed_evaluations.add(eval_key)
-                            
-                            if nmp_eval_uri:
-                                print(f"\n🔄 Processing completed evaluation: {eval_key}")
-                                try:
-                                    # Download results
-                                    results_json = download_and_process_eval(
-                                        eval_id=eval_id,
-                                        nmp_eval_uri=nmp_eval_uri,
-                                        save_dir=Path("results") / job_id,
-                                        model=model_name,
-                                        eval_type=eval_data['eval_type']
-                                    )
-                                    
-                                    # Upload to MLflow
-                                    if results_json:
-                                        upload_result_to_mlflow(
-                                            results_json,
-                                            tracking_uri=mlflow_uri
-                                        )
-                                        print(f"✅ Successfully uploaded {eval_key} to MLflow")
-                                    else:
-                                        print(f"❌ Failed to download results for {eval_key}")
-                                        
-                                except Exception as e:
-                                    print(f"❌ Error processing {eval_key}: {str(e)}")
-                            else:
-                                print(f"⚠️ No nmp_uri or eval_id found for completed evaluation: {eval_key}")
             
             results_df = create_results_table(job_data)
             customizations_df = create_customization_table(job_data)

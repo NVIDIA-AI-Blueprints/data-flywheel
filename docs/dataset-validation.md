@@ -119,6 +119,7 @@ Based on workload type:
 #### Tool Calling Workloads
 
 - Record must have tool calls in response
+- **Tool Properties Limit**: Tool function parameter definitions are limited to a maximum of 8 properties (for known NIM bug)
 - Function arguments must be valid JSON
 - Arguments are parsed from strings to JSON objects
 

@@ -126,7 +126,7 @@ class TaskDBManager:
     def mark_flywheel_run_cancelled(
         self,
         flywheel_run_id: str | ObjectId,
-        error_msg: str | None = None,
+        error_msg: str,
     ) -> None:
         """Mark a FlywheelRun as cancelled.
 
@@ -179,6 +179,13 @@ class TaskDBManager:
             {"$set": {"deployment_status": deployment_status, "runtime_seconds": runtime_seconds}},
         )
 
+    def set_nim_started(self, nim_id: ObjectId, started_at: datetime) -> None:
+        """Set the started_at timestamp for a NIM run if not already set."""
+        self._nims.update_one(
+            {"_id": nim_id, "started_at": None},
+            {"$set": {"started_at": started_at}},
+        )
+
     def mark_nim_completed(self, nim_id: ObjectId, started_at: datetime) -> None:
         """Mark a NIM run as completed once the deployment has been shut down.
 
@@ -200,14 +207,14 @@ class TaskDBManager:
             },
         )
 
-    def mark_nim_cancelled(self, nim_id: ObjectId, error_msg: str | None = None) -> None:
+    def mark_nim_cancelled(self, nim_id: ObjectId, error_msg: str) -> None:
         """Mark a NIM run as cancelled.
 
         Only update if there is no error on the NIM run document.
         """
         finished_time = datetime.utcnow()
         self._nims.update_one(
-            {"_id": nim_id, "error": None},
+            {"_id": nim_id, "error": None, "finished_at": None},
             {
                 "$set": {
                     "status": NIMRunStatus.CANCELLED,
@@ -376,9 +383,7 @@ class TaskDBManager:
             )
         )
 
-    def mark_llm_judge_cancelled(
-        self, flywheel_run_id: ObjectId, error_msg: str | None = None
-    ) -> None:
+    def mark_llm_judge_cancelled(self, flywheel_run_id: ObjectId, error_msg: str) -> None:
         """Mark an LLM judge run as cancelled.
 
         Args:
@@ -386,8 +391,7 @@ class TaskDBManager:
             error_msg: Optional error message to set
         """
         update_fields = {"deployment_status": DeploymentStatus.CANCELLED.value}
-        if error_msg:
-            update_fields["error"] = error_msg
+        update_fields["error"] = error_msg
 
         self.llm_judge_runs.update_one(
             {"flywheel_run_id": flywheel_run_id},
@@ -440,8 +444,16 @@ class TaskDBManager:
         Args:
             job_id: ID of the job to delete records for
         """
-        self._evaluations.delete_many({"flywheel_run_id": job_id})
-        self._customizations.delete_many({"flywheel_run_id": job_id})
+        # First get all NIM IDs for this job (evaluations and customizations use nim_id as foreign key)
+        nim_records = list(self._nims.find({"flywheel_run_id": job_id}, {"_id": 1}))
+        nim_ids = [nim["_id"] for nim in nim_records]
+
+        # Delete evaluations and customizations using nim_id
+        if nim_ids:
+            self._evaluations.delete_many({"nim_id": {"$in": nim_ids}})
+            self._customizations.delete_many({"nim_id": {"$in": nim_ids}})
+
+        # Delete remaining records using flywheel_run_id
         self._nims.delete_many({"flywheel_run_id": job_id})
         self.llm_judge_runs.delete_many({"flywheel_run_id": job_id})
         self._flywheel_runs.delete_one({"_id": job_id})

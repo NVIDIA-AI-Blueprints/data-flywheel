@@ -169,7 +169,7 @@ test:integration:
     - source .venv/bin/activate
     - uv sync --dev --frozen
   script:
-    - uv run pytest -m integration tests/integration/test_job_evaluation.py -v
+    - uv run pytest -m integration tests/integration -v
   variables:
     ELASTICSEARCH_URL: http://elasticsearch:9200
     REDIS_URL: redis://redis:6379/0

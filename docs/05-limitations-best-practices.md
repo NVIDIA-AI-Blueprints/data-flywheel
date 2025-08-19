@@ -37,7 +37,9 @@ This flywheel doesn't automatically promote or deploy any model. You must also v
 
 ## Evaluation Types and Metrics
 
-For a detailed explanation of evaluation types and metrics (such as base-eval, icl-eval, similarity, and tool-calling metrics), see [Evaluation Types and Metrics Documentation](./06-evaluation-types-and-metrics.md).
+> **📖 For detailed evaluation information:** See [Evaluation Types and Metrics](06-evaluation-types-and-metrics.md)
+
+The system supports multiple evaluation types including base evaluation, ICL evaluation, and customized evaluation with metrics for both tool-calling and general conversation workloads.
 
 ## Common Pitfalls
 
@@ -57,9 +59,13 @@ Test-time compute is not just a function of model size; smaller models may gener
 
 This flywheel includes deduplication and validation steps to reduce the risk of data leakage between evaluation, training, and reference datasets. However, it is your responsibility to ensure that no overlap exists, especially if datasets are updated or re-used. Overlapping data can lead to inflated evaluation scores and misleading results.
 
+> **📖 For data validation requirements:** See [Dataset Validation](dataset-validation.md)
+
 ### Un-tagged Workloads
 
 Workload IDs are essential for correct data partitioning, evaluation, and reporting. The system expects all records to be tagged with a unique workload ID; missing or inconsistent IDs will result in improper dataset splits and unreliable comparisons. Always ensure that your data ingestion and logging pipelines assign and preserve workload IDs.
+
+> **📖 For data logging implementation:** See [Data Logging for AI Apps](data-logging.md)
 
 ### Misinterpreting the `arguments` Field in AIVA Datasets
 
@@ -85,6 +91,8 @@ Begin by routing only a small portion of your production or evaluation traffic t
 - Iterate faster by focusing on a representative sample before scaling up to the full workload.
 - Roll back or adjust based on early feedback without impacting the majority of users or data.
 
+> **📖 For data split tuning:** See [Data Split Configuration](03-configuration.md#data-split-configuration)
+
 ### Schedule Jobs During Off-Peak Hours if Using Shared Infrastructure
 
 If your environment shares compute resources with other teams or workloads, consider running intensive jobs (such as training, evaluation, or large-scale data processing) during off-peak hours. This can:
@@ -93,6 +101,8 @@ If your environment shares compute resources with other teams or workloads, cons
 - Minimize the impact on other critical workloads.
 - Be automated using workflow schedulers, cron jobs, or cloud-native orchestration tools.
 - Leverage the system's support for asynchronous job execution (e.g., Celery tasks) to queue jobs for later execution.
+
+> **📖 For workflow orchestration details:** See [Task Orchestration and Workflow Management](08-workflow-orchestration.md)
 
 ### Keep Historical Job Results; Improvements Aren't Always Monotonic
 
@@ -107,8 +117,32 @@ Always retain the results of previous jobs, including evaluation metrics and mod
 
 This flywheel's blueprint provides configuration options to control how data is partitioned and how in-context learning (ICL) is performed:
 
-- `data_split_config` controls the partitioning of data into evaluation, training, and validation sets. Adjust `eval_size`, `val_ratio`, and `min_total_records` to match your workload's size and diversity.
+- `data_split_config` controls the partitioning of data into evaluation, training, and validation sets using **class-aware stratified splitting**. Adjust `eval_size`, `val_ratio`, and `min_total_records` to match your workload's size and diversity.
 - `icl_config` manages ICL parameters such as `max_context_length`, `reserved_tokens`, and the number of ICL examples. Tune these to optimize for your model's capabilities and the complexity of your tasks.
 - Monitor the impact of these settings on evaluation outcomes and iterate as you gather more data about your workloads.
 - Refer to the configuration files and code (`src/config.py`, `src/tasks/tasks.py`, and `src/lib/flywheel/util.py`) for details on how these parameters are used in practice.
+
+> **📖 For all configuration options:** See [Model Integration & Evaluation Settings](03-configuration.md#evaluation-settings)
+
+### Data Split Performance & Troubleshooting
+
+#### Performance Characteristics
+- **Small datasets** (< 100 records): Minimal overhead
+- **Large datasets** (> 10,000 records): May require `limit` parameter tuning
+- **Highly imbalanced classes**: Consider adjusting `eval_size` relative to smallest class
+
+#### Common Issues & Solutions
+| Issue | Cause | Solution |
+|-------|-------|----------|
+| "Insufficient samples per class" | `eval_size` too large for available classes | Reduce `eval_size` or increase dataset size |
+| Uneven class distribution | Too many rare classes | Check class balance with `get_tool_name()` analysis |
+| Non-reproducible splits | Missing `random_seed` | Set `random_seed: 42` in config |
+
+#### When Stratification Fails
+The system automatically falls back to random splitting when:
+- Number of classes > `eval_size`
+- Any class has only 1 sample
+- Insufficient samples for stratified sampling
+
+**Source Reference**: See `src/lib/flywheel/util.py:133-141` for fallback logic.
 

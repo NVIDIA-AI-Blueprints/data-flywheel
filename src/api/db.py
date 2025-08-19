@@ -59,7 +59,9 @@ def init_db():
 
 def close_db():
     """Close the MongoDB connection."""
-    global _client
+    global _client, _db
     if _client:
         _client.close()
         _client = None
+    # Reset the database reference as well
+    _db = None

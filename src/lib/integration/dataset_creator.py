@@ -7,11 +7,10 @@ from bson import ObjectId
 from src.api.db import get_db
 from src.api.models import DatasetType, WorkloadClassification
 from src.config import DataSplitConfig, settings
+from src.lib.flywheel.icl_selection import ICLSelection
 from src.lib.flywheel.util import (
     format_evaluator,
     format_training_data,
-    generate_icl_records,
-    select_icl_examples,
     split_records,
 )
 from src.lib.integration.data_validator import DataValidator
@@ -35,16 +34,20 @@ class DatasetCreator:
         flywheel_run_id: str,
         output_dataset_prefix: str,
         workload_id: str,
+        client_id: str,
         split_config: DataSplitConfig | None = None,
     ):
         self.records = records
         self.flywheel_run_id = flywheel_run_id
         self.output_dataset_prefix = output_dataset_prefix
         self.workload_id = workload_id
+        self.client_id = client_id
         self.ts = int(datetime.utcnow().timestamp())
         self.split_config = split_config or settings.data_split_config
 
-    def create_datasets(self, workload_type: WorkloadClassification) -> dict[str, str]:
+    def create_datasets(
+        self, workload_type: WorkloadClassification
+    ) -> tuple[str | None, dict[str, str]]:
         # Validate and clean records
         validator = DataValidator()
         validated_records = validator.validate_records(
@@ -71,13 +74,9 @@ class DatasetCreator:
             f"Split {len(self.records)} records into {len(eval_records)} eval, {len(train_records)} train, {len(val_records)} val"
         )
 
-        # Select ICL examples from training records
-        icl_examples = select_icl_examples(train_records, settings.icl_config, workload_type)
-        msg = f"ICL Examples:\n Workload Type: {workload_type}\n"
-        for tool_name, examples in icl_examples.items():
-            msg += f"Selected {len(examples)} examples for tool {tool_name}\n"
-        logger.info(msg)
-        logger.info("\n\n")
+        # Keep original records for ICL selection before formatting
+        original_train_records = train_records.copy()
+        original_eval_records = eval_records.copy()
 
         ## format the training data
         train_records = format_training_data(train_records, workload_type)
@@ -96,7 +95,10 @@ class DatasetCreator:
         eval_uploader = DataUploader(dataset_name=eval_dataset_name)
         eval_uploader.upload_data(eval_jsonl_data, "eval_data.jsonl")
 
-        icl_records = generate_icl_records(eval_records, selected_examples=icl_examples)
+        icl_selector = ICLSelection(settings.icl_config, self.workload_id, self.client_id)
+        index_name, icl_records = icl_selector.generate_icl_records(
+            original_train_records, workload_type, original_eval_records
+        )
         # Format ICL records for evaluation as well
         icl_records = format_evaluator(icl_records)
         icl_jsonl_data = "\n".join(json.dumps(record) for record in icl_records)
@@ -135,8 +137,11 @@ class DatasetCreator:
             },
         )
 
-        return {
-            DatasetType.BASE: eval_dataset_name,
-            DatasetType.ICL: icl_dataset_name,  # as testing record are converted to icl records and uploaded
-            DatasetType.TRAIN: train_dataset_name,
-        }
+        return (
+            index_name,
+            {
+                DatasetType.BASE: eval_dataset_name,
+                DatasetType.ICL: icl_dataset_name,  # as testing record are converted to icl records and uploaded
+                DatasetType.TRAIN: train_dataset_name,
+            },
+        )

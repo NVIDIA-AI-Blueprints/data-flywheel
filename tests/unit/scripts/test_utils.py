@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import os
+from pathlib import Path
 from unittest.mock import patch
 
 import pytest
@@ -141,3 +142,22 @@ def test_validate_path_relative_with_data_dir(mock_project_root):
     result = validate_path("test.txt", is_input=True, data_dir=str(subdir))
     assert os.path.isfile(result)
     assert result == str(test_file)
+
+
+def test_get_project_root():
+    """Test that get_project_root returns the correct absolute path."""
+    from src.scripts.utils import get_project_root
+
+    # Mock the __file__ path to be in src/scripts/utils.py
+    mock_file = Path(__file__).resolve().parent.parent.parent / "src" / "scripts" / "utils.py"
+
+    with patch("src.scripts.utils.__file__", str(mock_file)):
+        # Get the expected project root by going up three levels from the mocked file
+        expected_root = str(mock_file.parent.parent.parent)
+
+        # Get the actual project root
+        actual_root = get_project_root()
+
+        # Compare the paths
+        assert actual_root == expected_root
+        assert os.path.isdir(actual_root)  # Verify it's a valid directory

@@ -1,7 +1,7 @@
 services:
 
   api:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.2.0}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-25.08}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -13,10 +13,13 @@ services:
       - REDIS_URL=redis://localhost:6379/0
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
-      - NGC_API_KEY=${NGC_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+      - LLM_JUDGE_API_KEY=${LLM_JUDGE_API_KEY:-${NVIDIA_API_KEY}}
+      - EMB_API_KEY=${EMB_API_KEY:-${NVIDIA_API_KEY}}
+      - COMPOSE_PROFILES=${COMPOSE_PROFILES}
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
-    command: ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000", "--reload"]
+    command: ["uv", "run", "uvicorn", "src.app:app", "--host", "0.0.0.0", "--port", "8000"]
     network_mode: host
     restart: always
     depends_on:
@@ -28,7 +31,7 @@ services:
         condition: service_started
 
   celery_worker:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.2.0}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-25.08}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -38,15 +41,14 @@ services:
       - REDIS_URL=redis://localhost:6379/0
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
-      - NGC_API_KEY=${NGC_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+      - LLM_JUDGE_API_KEY=${LLM_JUDGE_API_KEY:-${NVIDIA_API_KEY}}
+      - EMB_API_KEY=${EMB_API_KEY:-${NVIDIA_API_KEY}}
+      - COMPOSE_PROFILES=${COMPOSE_PROFILES}
     network_mode: host
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
-    # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery", "-n", "main_worker@%h"]
-
-    # Uncomment if you want to run celery without reloading on file changes
-    # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
+    command: ["uv", "run", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=50", "--queues=celery", "-n", "main_worker@%h", "--purge"]
 
     restart: always
     depends_on:
@@ -59,7 +61,7 @@ services:
 
 
   celery_parent_worker:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.2.0}
+    image: nvcr.io/nvstaging/blueprint/foundational-flywheel-server:${TAG:-25.08}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -69,15 +71,14 @@ services:
       - REDIS_URL=redis://localhost:6379/0
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
-      - NGC_API_KEY=${NGC_API_KEY}
+      - NVIDIA_API_KEY=${NVIDIA_API_KEY}
+      - LLM_JUDGE_API_KEY=${LLM_JUDGE_API_KEY:-${NVIDIA_API_KEY}}
+      - EMB_API_KEY=${EMB_API_KEY:-${NVIDIA_API_KEY}}
+      - COMPOSE_PROFILES=${COMPOSE_PROFILES}
     network_mode: host
     volumes:
       - ./src:/app/src  # Mount the src directory for hot reloading
-    # Uncomment if you want to reload (and kill all running workers) any time source files change
-    command: ["uv", "run", "watchmedo", "auto-restart", "--directory=/app/src", "--pattern=*.py", "--recursive", "--", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue", "-n", "parent_worker@%h"]
-
-    # Uncomment if you want to run celery without reloading on file changes
-    # command: ["uv", "run", "celery", "-A", "src.tasks.tasks", "worker", "--loglevel=info", "--concurrency=50"]
+    command: ["uv", "run", "celery", "-A", "src.tasks.cli:celery_app", "worker", "--loglevel=info", "--concurrency=1", "--queues=parent_queue", "-n", "parent_worker@%h", "--purge"]
 
     restart: always
     depends_on:
@@ -146,7 +147,19 @@ services:
         soft: -1
         hard: -1
 
+  # MLflow service - only starts when mlflow profile is enabled
+  mlflow:
+    profiles: ["mlflow"]
+    image: ghcr.io/mlflow/mlflow:v2.22.0
+    command: mlflow server --host 0.0.0.0 --port 5000
+    ports:
+      - "5000:5000"
+    volumes:
+      - mlflow-data:/mlruns  # Persistent storage for artifacts
+    restart: always
+
 volumes:
   elasticsearch-data:
   redis-data:
   mongodb-data:
+  mlflow-data:

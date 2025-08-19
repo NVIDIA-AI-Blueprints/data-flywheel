@@ -28,127 +28,6 @@ from src.config import settings
 
 
 @pytest.fixture
-def test_db_success(mock_db):
-    """Fixture to set up test database with sample data for successful tests"""
-    # Create test flywheel run
-    flywheel_run_id = ObjectId()
-    mock_db.flywheel_runs.insert_one.return_value = {"inserted_id": flywheel_run_id}
-
-    # Create test NIMs
-    nim1_id = ObjectId()
-    nim2_id = ObjectId()
-
-    # Create test LLM Judge
-    llm_judge_id = ObjectId()
-
-    # Mock flywheel run data
-    mock_db.flywheel_runs.find_one.return_value = {
-        "_id": flywheel_run_id,
-        "workload_id": "test_workload",
-        "client_id": "test_client",
-        "started_at": datetime.utcnow(),
-        "num_records": 100,
-        "nims": [],
-        "datasets": [
-            {
-                "name": f"test_dataset_{i+1}",
-                "num_records": 100,
-                "nmp_uri": f"test_uri_{i+1}",
-            }
-            for i in range(4)
-        ],
-    }
-
-    # Mock NIMs data
-    mock_db.nims.find.return_value = [
-        {
-            "_id": nim1_id,
-            "model_name": "test_model_1",
-            "flywheel_run_id": flywheel_run_id,
-            "deployment_status": DeploymentStatus.PENDING,
-            "runtime_seconds": 120.0,
-        },
-        {
-            "_id": nim2_id,
-            "model_name": "test_model_2",
-            "flywheel_run_id": flywheel_run_id,
-            "deployment_status": DeploymentStatus.PENDING,
-            "runtime_seconds": 60.0,
-        },
-    ]
-
-    mock_db.nims.insert_many.return_value = {"inserted_ids": [nim1_id, nim2_id]}
-
-    # Mock evaluations data
-    mock_db.evaluations.find.return_value = [
-        {
-            "nim_id": nim1_id,
-            "eval_type": "accuracy",
-            "scores": {"function_name": 0.95},
-            "started_at": datetime.utcnow(),
-            "finished_at": datetime.utcnow(),
-            "runtime_seconds": 15.0,
-            "progress": 100,
-            "nmp_uri": "test_uri_eval_1",
-        },
-        {
-            "nim_id": nim2_id,
-            "eval_type": "accuracy",
-            "scores": {"function_name": 0.85},
-            "started_at": datetime.utcnow(),
-            "finished_at": datetime.utcnow(),
-            "runtime_seconds": 15.0,
-            "progress": 100,
-            "nmp_uri": "test_uri_eval_2",
-        },
-    ]
-    # Mock customizations data
-    mock_db.customizations.find.return_value = [
-        {
-            "nim_id": nim1_id,
-            "started_at": datetime.utcnow(),
-            "finished_at": datetime.utcnow(),
-            "runtime_seconds": 30.0,
-            "progress": 100,
-            "epochs_completed": 10,
-            "steps_completed": 1000,
-            "nmp_uri": "test_uri_custom_1",
-        },
-        {
-            "nim_id": nim2_id,
-            "started_at": datetime.utcnow(),
-            "finished_at": datetime.utcnow(),
-            "runtime_seconds": 30.0,
-            "progress": 100,
-            "epochs_completed": 8,
-            "steps_completed": 800,
-            "nmp_uri": "test_uri_custom_2",
-        },
-    ]
-
-    mock_db.llm_judge_runs.insert_one.return_value = {"inserted_id": llm_judge_id}
-
-    # Mock LLM Judge data
-    mock_db.llm_judge_runs.find_one.return_value = {
-        "_id": llm_judge_id,
-        "flywheel_run_id": flywheel_run_id,
-        "model_name": "test-llm-judge",
-        "type": "remote",
-        "deployment_status": DeploymentStatus.READY,
-        "url": "http://test-llm-judge.com",
-    }
-
-    return {
-        "flywheel_run_id": str(flywheel_run_id),
-        "workload_id": "test_workload",
-        "client_id": "test_client",
-        "nim1_id": str(nim1_id),
-        "nim2_id": str(nim2_id),
-        "llm_judge_id": str(llm_judge_id),
-    }
-
-
-@pytest.fixture
 def test_db_no_llm_judge(mock_db):
     """Fixture to set up test database without LLM Judge data"""
     # Create test flywheel run
@@ -254,7 +133,7 @@ def mock_nim():
     nim_mock.model_dump.return_value = {
         "model_name": "test-model",
         "context_length": 8192,
-        "customization_enabled": True,
+        "customization_enabled": False,
     }
     return nim_mock
 
@@ -265,7 +144,10 @@ def validate_job_response_success(job_json):
     assert len(job_json["nims"]) == 2
     for nim in job_json["nims"]:
         assert nim["model_name"] in ["test_model_1", "test_model_2"]
-        assert nim["deployment_status"] == DeploymentStatus.PENDING
+        if nim["model_name"] == "test_model_1":
+            assert nim["deployment_status"] == DeploymentStatus.COMPLETED
+        else:
+            assert nim["deployment_status"] == DeploymentStatus.PENDING
 
     # Validate LLM Judge in job response
     assert job_json["llm_judge"] is not None
@@ -311,7 +193,7 @@ def tweak_settings(monkeypatch):
 
     # --- LLM Judge config (field *is* frozen, so create a new object) ----------
     remote_llm_judge_cfg = settings.llm_judge_config.model_copy(
-        update={"type": "remote", "url": "http://test-llm-judge.com"}
+        update={"deployment_type": "remote", "url": "http://test-llm-judge.com"}
     )
     monkeypatch.setattr(settings, "llm_judge_config", remote_llm_judge_cfg, raising=True)
 
@@ -356,3 +238,17 @@ def sample_split_config():
         "random_seed": 42,
         "limit": 25,
     }
+
+
+@pytest.fixture
+def mock_dms_client():
+    """Fixture to mock DMSClient."""
+    with patch("src.tasks.tasks.DMSClient") as mock:
+        mock_instance = MagicMock()
+        # Configure the mock instance methods
+        mock_instance.is_deployed.return_value = False
+        mock_instance.deploy_model.return_value = None
+        mock_instance.wait_for_deployment.return_value = None
+        mock_instance.wait_for_model_sync.return_value = None
+        mock.return_value = mock_instance
+        yield mock_instance

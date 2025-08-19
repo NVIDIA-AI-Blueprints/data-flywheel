@@ -14,6 +14,7 @@
 # limitations under the License.
 
 import sys
+import time
 
 import requests
 
@@ -27,7 +28,7 @@ logger = setup_logging("data_flywheel.nemo.llm_as_judge")
 class LLMAsJudge:
     def __init__(self):
         self.config = settings.llm_judge_config
-        self.config_type = self.config.type
+        self.config_type = self.config.deployment_type
 
     def spin_up_llm_judge(self) -> bool:
         """Spin up the local LLM Judge if it is not already deployed."""
@@ -101,25 +102,48 @@ class LLMAsJudge:
 def validate_llm_judge():
     """
     Validate NGC API key and LLM judge availability.
-    Exits the application if validation fails.
+    Exits the application if validation fails after 3 retry attempts.
     """
     # bring up local LLM judge or check if remote LLM judge is available
-    # if remote is not reachable, exit with error
+    # if remote is not reachable, exit with error after 3 retries
     llm_as_judge = LLMAsJudge()
-    llm_judge_available = llm_as_judge.validate_llm_judge_availability()
+    max_retries = 3
+    retry_delay = 10  # seconds
 
-    if not llm_judge_available:
-        logger.error("""
+    for attempt in range(1, max_retries + 1):
+        logger.info(
+            f"Attempting to validate LLM judge availability (attempt {attempt}/{max_retries})"
+        )
+
+        try:
+            llm_judge_available = llm_as_judge.validate_llm_judge_availability()
+
+            if llm_judge_available:
+                logger.info("LLM judge is available!")
+                return
+
+            logger.warning(f"LLM judge validation failed on attempt {attempt}/{max_retries}")
+
+        except Exception as e:
+            logger.warning(f"LLM judge validation error on attempt {attempt}/{max_retries}: {e}")
+
+        # If this is not the last attempt, wait before retrying
+        if attempt < max_retries:
+            logger.info(f"Retrying in {retry_delay} seconds...")
+            time.sleep(retry_delay)
+            # Increase delay for subsequent retries (exponential backoff)
+            retry_delay *= 2
+
+    # If we get here, all retries failed
+    logger.error("""
         **************************************************
         *                                                *
         *  Remote Evaluator LLM judge is not available!  *
         *  Did you set the correct API key?              *
-        *  `NGC_API_KEY` needs to be set.                *
+        *  `NVIDIA_API_KEY` needs to be set.             *
         *                                                *
         *  Exiting                                       *
         *                                                *
         **************************************************
         """)
-        sys.exit(1)
-
-    logger.info("LLM judge is available!")
+    sys.exit(1)

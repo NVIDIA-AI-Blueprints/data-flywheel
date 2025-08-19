@@ -15,14 +15,107 @@ NAMESPACE="default"
 REQUIRED_DISK_GB=200
 REQUIRED_GPUS=2
 NGC_API_KEY="${NGC_API_KEY:-}"
-HELM_CHART_URL="https://helm.ngc.nvidia.com/nvidia/nemo-microservices/charts/nemo-microservices-helm-chart-25.4.0.tgz"
+HELM_CHART_URL="https://helm.ngc.nvidia.com/nvidia/nemo-microservices/charts/nemo-microservices-helm-chart-25.8.0.tgz"
 ADDITIONAL_VALUES_FILES=(demo-values.yaml)
 
+# === Progress Bar Config ===
+SHOW_PROGRESS_BAR=false
+CURRENT_STEP=0
+TOTAL_STEPS=8
+STEP_DESCRIPTIONS=(
+  "Checking prerequisites"
+  "Downloading Helm chart"
+  "Starting Minikube"
+  "Setting up NGC and Helm"
+  "Installing NeMo microservices"
+  "Waiting for pods"
+  "Checking pod health"
+  "Configuring DNS"
+)
+
 # === Utility ===
-log() { echo -e "\033[1;32m[INFO]\033[0m $*"; }
-warn() { echo -e "\033[1;33m[WARN]\033[0m $*"; }
-err() { echo -e "\033[1;31m[ERROR]\033[0m $*" >&2; }
-die() { err "$*"; exit 1; }
+log() {
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    echo -e "\033[1;32m[INFO]\033[0m $*" >> /tmp/nemo-deploy.log
+  else
+    echo -e "\033[1;32m[INFO]\033[0m $*"
+  fi
+}
+warn() {
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    echo -e "\033[1;33m[WARN]\033[0m $*" >> /tmp/nemo-deploy.log
+  else
+    echo -e "\033[1;33m[WARN]\033[0m $*"
+  fi
+}
+err() {
+  echo -e "\033[1;31m[ERROR]\033[0m $*" >&2
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    echo -e "\033[1;31m[ERROR]\033[0m $*" >> /tmp/nemo-deploy.log
+  fi
+}
+die() {
+  err "$*"
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    echo ""
+    echo "Full deployment log available at: /tmp/nemo-deploy.log"
+  fi
+  exit 1
+}
+
+# Progress log function - always shows on screen, even in progress mode
+progress_log() {
+  echo -e "\033[1;32m[INFO]\033[0m $*"
+}
+
+# Progress bar function
+show_progress() {
+  local step=$1
+  local description=$2
+  local progress=$((step * 100 / TOTAL_STEPS))
+  local bar_length=50
+  local filled_length=$((progress * bar_length / 100))
+
+  # Create progress bar
+  local bar=""
+  for ((i=0; i<filled_length; i++)); do
+    bar+="█"
+  done
+  for ((i=filled_length; i<bar_length; i++)); do
+    bar+="░"
+  done
+
+  # Use progress_log to always show on screen
+  progress_log "Step $step/$TOTAL_STEPS: $description [$bar] $progress%"
+
+  if [[ $step -eq $TOTAL_STEPS ]]; then
+    progress_log "Deployment completed successfully! ✅"
+  fi
+}
+
+# Function to update progress
+update_progress() {
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    CURRENT_STEP=$((CURRENT_STEP + 1))
+    show_progress "$CURRENT_STEP" "${STEP_DESCRIPTIONS[$((CURRENT_STEP - 1))]}"
+  fi
+}
+
+# Redirect output when progress bar is enabled
+redirect_output() {
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    exec 3>&1 4>&2
+    exec 1>/tmp/nemo-deploy.log 2>&1
+  fi
+}
+
+# Restore output
+restore_output() {
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    exec 1>&3 2>&4
+    exec 3>&- 4>&-
+  fi
+}
 
 # Check if running as root
 is_root() {
@@ -130,6 +223,7 @@ Options:
   --helm-chart-url URL    Override the default helm chart URL
                           Default: $HELM_CHART_URL
   --values-file FILE      Path to a values file (can be specified multiple times). Not required.
+  --progress              Show progress bar and suppress detailed output
   --help                  Show this help message
 
 Environment Variables:
@@ -151,6 +245,7 @@ Requirements:
 
 Example:
   $0 --values-file /path/to/values1.yaml --values-file /path/to/values2.yaml
+  $0 --progress  # Run with progress bar and minimal output
 EOF
 }
 
@@ -165,6 +260,10 @@ parse_args() {
       --values-file)
         ADDITIONAL_VALUES_FILES+=("$2")
         shift 2
+        ;;
+      --progress)
+        SHOW_PROGRESS_BAR=true
+        shift
         ;;
       --help)
         show_help
@@ -385,11 +484,43 @@ start_minikube() {
 
   log "Enabling ingress addon..."
   minikube addons enable ingress
+
+  # Enable minikube to resume on restart
+  echo """[Unit]
+  Description=Launch Minikube
+  After=docker.service
+  After=docker.service
+  BindsTo=docker.service
+  PartOf=docker.service
+
+  [Service]
+  Type=oneshot
+  ExecStartPre=/bin/bash -c 'until docker info >/dev/null 2>&1; do echo "Waiting for Docker..."; sleep 1; done'
+  ExecStart=/usr/local/bin/minikube start
+  RemainAfterExit=true
+  ExecStop=/usr/local/bin/minikube stop
+  StandardOutput=journal
+  User=$(whoami)
+
+  [Install]
+  WantedBy=multi-user.target""" | maybe_sudo tee /etc/systemd/system/minikube.service
+  maybe_sudo systemctl daemon-reload
+  maybe_sudo systemctl enable minikube
 }
 
 # === Phase 2: NGC Auth and Helm Setup ===
 setup_ngc_and_helm() {
-  [[ -n "$NGC_API_KEY" ]] || read -rsp "Enter your NGC API Key: " NGC_API_KEY && echo
+  # Handle NGC API key prompting even when progress bar is enabled
+  if [[ -z "$NGC_API_KEY" ]]; then
+    if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+      # Temporarily restore output for user interaction
+      restore_output
+      read -rsp "Enter your NGC API Key: " NGC_API_KEY && echo
+      redirect_output
+    else
+      read -rsp "Enter your NGC API Key: " NGC_API_KEY && echo
+    fi
+  fi
 
   export NGC_API_KEY
 
@@ -407,6 +538,9 @@ setup_ngc_and_helm() {
 download_helm_chart() {
   log "Downloading NeMo microservices Helm chart..."
 
+  # Clean up any existing chart files/directories
+  log "Cleaning up any existing chart files..."
+  rm -rf nemo-microservices-helm-chart-25.7.0.tgz nemo-microservices-helm-chart/
 
   # Check if demo-values.yaml exists, create if missing
   if [[ ! -f "demo-values.yaml" ]]; then
@@ -419,11 +553,6 @@ download_helm_chart() {
 existingSecret: ngc-api
 existingImagePullSecret: nvcrimagepullsecret
 
-entity-store:
-  enabled: true
-  appConfig:
-    BASE_URL_NIM: http://nemo-nim-proxy:8000
-    BASE_URL_DATASTORE: http://nemo-data-store:3000/v1/hf
 
 data-store:
   enabled: true
@@ -437,38 +566,27 @@ customizer:
   enabled: true
   modelsStorage:
     storageClassName: standard
+  customizationTargets:
+    overrideExistingTargets: true
+    targets:
+      meta/llama-3.2-1b-instruct@2.0:
+        enabled: true
+      meta/llama-3.2-3b-instruct@2.0:
+        enabled: true
+      meta/llama-3.1-8b-instruct@2.0:
+        enabled: true
   customizerConfig:
-    models:
-      meta/llama-3.2-1b-instruct:
-        enabled: true
-      meta/llama-3.2-3b-instruct:
-        enabled: true
-      meta/llama-3.1-8b-instruct:
-        enabled: true
-        model_path: llama-3_1-8b-instruct
-        training_options:
-        - finetuning_type: lora
-          num_gpus: 1
-          training_type: sft
     training:
       pvc:
         storageClass: "standard"
         volumeAccessMode: "ReadWriteOnce"
 
 evaluator:
-  enabled: true
   milvus:
     enabled: false
-  argoServiceAccount:
-    create: true
-    name: workflow-executor
 
 guardrails:
-  enabled: true
-  env:
-    DEMO: "True"
-    DEFAULT_CONFIG_ID: self-check
-    NIM_ENDPOINT_URL: http://nemo-nim-proxy:8000/v1
+  enabled: false
 
 ingress:
   enabled: true
@@ -699,18 +817,72 @@ configure_dns() {
 
 # === Main Entrypoint ===
 main() {
+  # Step 1: Parse arguments first (before progress bar setup)
   parse_args "$@"
+
+  # Initialize progress bar if enabled
+  if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
+    progress_log "Starting NeMo Microservices deployment..."
+    progress_log "Detailed logs will be written to: /tmp/nemo-deploy.log"
+    echo ""
+    # Clear the log file
+    > /tmp/nemo-deploy.log
+  fi
+
+  # Step 1: Check prerequisites
+  update_progress
+  redirect_output
   check_prereqs
+  restore_output
+
+  # Step 2: Download Helm chart
+  update_progress
+  redirect_output
   download_helm_chart
+  restore_output
+
+  # Step 3: Start Minikube
+  update_progress
+  redirect_output
   start_minikube
   # Ingress needs a few more seconds after it reports ready before the containers can get installed
   sleep 10
+  restore_output
+
+  # Step 4: Setup NGC and Helm
+  update_progress
+  redirect_output
   setup_ngc_and_helm
+  restore_output
+
+  # Step 5: Install NeMo microservices
+  update_progress
+  redirect_output
   install_nemo_microservices
+  restore_output
+
+  # Step 6: Wait for pods
+  update_progress
+  redirect_output
   wait_for_pods
+  restore_output
+
+  # Step 7: Check pod health
+  update_progress
+  redirect_output
   check_pod_health || die "Base cluster is not healthy after waiting. Investigate and re-run."
+  restore_output
+
+  # Step 8: Configure DNS
+  update_progress
+  redirect_output
   configure_dns
-  log "Nemo Microservices Platform successfully deployed."
+  restore_output
+
+  # Final success message for non-progress mode
+  if [[ "$SHOW_PROGRESS_BAR" != "true" ]]; then
+    log "Nemo Microservices Platform successfully deployed."
+  fi
 }
 
 main "$@"

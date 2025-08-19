@@ -18,7 +18,7 @@ from typing import Any
 from bson import ObjectId
 
 from src.api.db_manager import TaskDBManager
-from src.config import settings
+from src.config import NIMConfig, settings
 from src.lib.nemo.customizer import Customizer
 from src.lib.nemo.dms_client import DMSClient
 from src.log_utils import setup_logging
@@ -39,36 +39,6 @@ class CleanupManager:
         self.customizer = Customizer()
         self.cleanup_errors: list[str] = []
 
-    def find_running_flywheel_runs(self) -> list[dict[str, Any]]:
-        """Find all flywheel runs that are currently running."""
-        logger.info("Finding running flywheel runs...")
-
-        running_runs = self.db_manager.find_running_flywheel_runs()
-
-        logger.info(f"Found {len(running_runs)} running flywheel runs")
-        return running_runs
-
-    def find_running_nims(self, flywheel_run_id: ObjectId) -> list[dict[str, Any]]:
-        """Find all NIMs with RUNNING or PENDING deployment status for a flywheel run."""
-        running_nims = self.db_manager.find_running_nims_for_flywheel(flywheel_run_id)
-
-        logger.info(f"Found {len(running_nims)} running NIMs for flywheel run {flywheel_run_id}")
-        return running_nims
-
-    def find_customization_jobs(self, nim_id: ObjectId) -> list[dict[str, Any]]:
-        """Find all customization jobs associated with a NIM."""
-        customizations = self.db_manager.find_customizations_for_nim(nim_id)
-
-        logger.info(f"Found {len(customizations)} customizations for NIM {nim_id}")
-        return customizations
-
-    def find_evaluation_jobs(self, nim_id: ObjectId) -> list[dict[str, Any]]:
-        """Find all evaluation jobs associated with a NIM."""
-        evaluations = self.db_manager.find_evaluations_for_nim(nim_id)
-
-        logger.info(f"Found {len(evaluations)} evaluations for NIM {nim_id}")
-        return evaluations
-
     def cancel_customization_jobs(self, customizations: list[dict[str, Any]]):
         """Cancel all running customization jobs."""
         if not customizations:
@@ -83,6 +53,38 @@ class CleanupManager:
                     error_msg = f"Failed to cancel customization job {customization['job_id']}: {e}"
                     logger.warning(error_msg)
                     self.cleanup_errors.append(error_msg)
+
+    def delete_nim_customization_config(self, nim: dict[str, Any]):
+        """Delete customization configuration for a specific NIM."""
+        model_name = nim["model_name"]
+
+        # Find the NIM config in settings
+        nim_config = None
+        for config in settings.nims:
+            if config.model_name == model_name:
+                nim_config = config
+                break
+
+        if not nim_config or not nim_config.customizer_configs:
+            logger.info(f"No customizer configs found for NIM {model_name}")
+            return
+
+        # Generate config name using the NIMConfig's method
+        try:
+            config_name = NIMConfig.generate_config_name(model_name)
+        except ValueError as e:
+            logger.warning(f"Invalid base model format for {model_name}: {e}")
+            return
+
+        try:
+            self.customizer.delete_customization_config(config_name)
+            logger.info(f"Deleted customization config {config_name} for NIM {model_name}")
+        except Exception as e:
+            error_msg = (
+                f"Failed to delete customization config {config_name} for NIM {model_name}: {e}"
+            )
+            logger.warning(error_msg)
+            self.cleanup_errors.append(error_msg)
 
     def shutdown_nim(self, nim: dict[str, Any]):
         """Shutdown a NIM deployment."""
@@ -158,14 +160,17 @@ class CleanupManager:
         logger.info(f"Cleaning up flywheel run {flywheel_run_id}")
 
         # Find running NIMs
-        running_nims = self.find_running_nims(flywheel_run_id)
+        running_nims = self.db_manager.find_running_nims_for_flywheel(flywheel_run_id)
+        logger.info(f"Found {len(running_nims)} running NIMs for flywheel run {flywheel_run_id}")
 
+        # Clean up running NIMs (cancel jobs, shutdown deployments)
         for nim in running_nims:
             nim_id = nim["_id"]
-            logger.info(f"Processing NIM {nim['model_name']} (ID: {nim_id})")
+            logger.info(f"Processing running NIM {nim['model_name']} (ID: {nim_id})")
 
             # Find and clean up customization jobs
-            customizations = self.find_customization_jobs(nim_id)
+            customizations = self.db_manager.find_customizations_for_nim(nim_id)
+            logger.info(f"Found {len(customizations)} customizations for NIM {nim_id}")
             if customizations:
                 self.cancel_customization_jobs(customizations)
 
@@ -184,7 +189,9 @@ class CleanupManager:
 
         try:
             # Find all running flywheel runs
-            running_flywheel_runs = self.find_running_flywheel_runs()
+            logger.info("Finding running flywheel runs...")
+            running_flywheel_runs = self.db_manager.find_running_flywheel_runs()
+            logger.info(f"Found {len(running_flywheel_runs)} running flywheel runs")
 
             if not running_flywheel_runs:
                 logger.info("No running flywheel runs found. Nothing to clean up.")
@@ -200,6 +207,17 @@ class CleanupManager:
 
             # Shutdown LLM judge
             self.shutdown_llm_judge()
+
+            # Clean up customization configs for ALL NIMs from settings (global cleanup)
+            logger.info(
+                f"Cleaning up customization configs for {len(settings.nims)} total NIMs from settings"
+            )
+
+            for nim_config in settings.nims:
+                logger.info(f"Deleting customization config for NIM {nim_config.model_name}")
+                # Create a dict-like object to match the expected interface
+                nim_dict = {"model_name": nim_config.model_name}
+                self.delete_nim_customization_config(nim_dict)
 
             # Report results
             if self.cleanup_errors:

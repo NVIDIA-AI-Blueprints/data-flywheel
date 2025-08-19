@@ -18,7 +18,7 @@ from typing import Any
 
 import requests
 
-from src.config import NIMConfig, NMPConfig
+from src.config import EmbeddingConfig, NIMConfig, NMPConfig
 from src.lib.flywheel.cancellation import check_cancellation
 from src.log_utils import setup_logging
 
@@ -34,11 +34,11 @@ class DMSClient:
         nim: NIMConfig object
     """
 
-    def __init__(self, nmp_config: NMPConfig, nim: NIMConfig):
+    def __init__(self, nmp_config: NMPConfig, nim: NIMConfig | EmbeddingConfig):
         self.nmp_config = nmp_config
         self.nim = nim
 
-    def deploy_model(self) -> dict[str, Any]:
+    def deploy_model(self) -> dict[str, Any] | None:
         """Deploy a model using the DMS API.
 
         Returns:

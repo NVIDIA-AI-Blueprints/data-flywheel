@@ -1,6 +1,6 @@
 # Data Flywheel Foundational Blueprint
 
-Deploy this blueprint to create a **production-grade autotonomous Data Flywheel service** that uses the NeMo Microservices platform to continuously discover and promote more efficient models.
+Deploy this blueprint to create a **production-grade autonomous Data Flywheel service** that uses the NeMo Microservices platform to continuously discover and promote more efficient models.
 
 Data Flywheels are a fledgling concept in GenerativeAI, but already real-world tests within NVIDIA have identified instances where **using a flywheel can reduce inference costs by up to 98.6%**. There are caveats to this which we discuss below, but we believe these early data points warrant attention.
 
@@ -13,7 +13,7 @@ You can get started quickly and achieve similar results using your own infrastru
 
 - [Data Flywheel Foundational Blueprint](#data-flywheel-foundational-blueprint)
   - [What is a Data Flywheel?](#what-is-a-data-flywheel)
-    - [Where the NeMo Microservice Platform Comes In](#where-the-nemo-microservice-platform-comes-in)
+    - [Where the NeMo microservices Come In](#where-the-nemo-microservices-come-in)
   - [How to Use This Blueprint](#how-to-use-this-blueprint)
     - [Preparing your data](#preparing-your-data)
       - [1 – Log schema](#1log-schema)
@@ -24,16 +24,11 @@ You can get started quickly and achieve similar results using your own infrastru
   - [Technical Details](#technical-details)
     - [Key Features](#key-features)
     - [Design Philosophy](#design-philosophy)
+      - [Future Roadmap](#future-roadmap)
     - [Software Components](#software-components)
     - [Technical Diagrams](#technical-diagrams)
     - [Minimum System Requirements](#minimum-system-requirements)
-      - [Hardware Requirements](#hardware-requirements)
-      - [Software Requirements](#software-requirements)
-      - [Service Requirements](#service-requirements)
-      - [Resource Requirements](#resource-requirements)
-      - [Development Environment](#development-environment)
-      - [Production Environment](#production-environment)
-    - [Task Serialization Safeguard 🌐](#task-serialization-safeguard)
+    - [Task Serialization Safeguard 🌐](#task-serialization-safeguard-)
   - [Next Steps](#next-steps)
   - [Available Customizations](#available-customizations)
   - [Contributing](#contributing)
@@ -65,7 +60,7 @@ Production traffic from your application is routed to a centralized logging serv
 
 It's a lot to decide on. Enter: The NeMo Microservice Platform.
 
-### Where the NeMo microservices Comes In
+### Where the NeMo microservices Come In
 
 The NeMo Microservice platform allows for programmatic control of **datasets**, **fine-tuning**, **evaluation**, and **inference**. This means that rather than having ML engineers manage each experiment, you can automate the exploration of various configurations using sensible defaults, and then present the most promising candidates to a research engineer or machine learning engineer for further analysis.
 
@@ -91,7 +86,7 @@ In just a few hours, this automated process built on top of NeMo microservices c
 1. Pull data from your log store.
 1. Group it by task (for example, if you have an agent doing multiple things, each node is a different task).
 1. De-dup it.
-1. Create eval and fine-tuning datasets from your production traffic and store them in NeMo Datastore.
+1. Create eval and fine-tuning datasets from your production traffic using **class-aware stratified splitting** to ensure balanced representation across tool types, and store them in NeMo Datastore.
 1. Kick off fine-tuning jobs with NeMo Customizer.
 1. Run evaluations with LLM-as-judge comparisons on NeMo Evaluator.
 
@@ -131,7 +126,7 @@ Therefore, to effectively use this blueprint:
 5. **Interpret the results**
    - The response is grouped by NIM. For each NIM the Flywheel currently runs three experiment types:
      • **base** – raw production prompts replayed.
-     • **icl** – few-shot prompts built from random traffic examples.
+     • **icl** – few-shot prompts built from traffic examples. The selection can be random, or based on semantic similarity for more relevant examples.
      • **customized** – a LoRA fine-tune evaluated with the base prompts.
    - Scores are an LLM-as-judge similarity metric in the range `[0, 1]`. Look for high-scoring small models, then download the datasets, LoRA adapters, or model artifacts for manual inspection and further analysis.
 
@@ -287,8 +282,11 @@ The Flywheel identified that the Tool Calling use case ended up being simple eno
 We have also found instances where `Qwen-2.5-32b-coder` did as well as `Llama-3.1-70b-instruct` without any fine-tuning, and so were able to quickly reduce inference costs and time to first token by >50% by swapping out a NIM.
 
 ### Additional Reading
-You can also learn more about Flywheels here:
 
+**Data Flywheel Blueprint Documentation:**
+* [Complete Documentation Guide](./docs/README.md) - Role-based navigation and comprehensive documentation index
+
+**External Resources:**
 * [Enhance Your AI Agent with Data Flywheels Using NVIDIA NeMo Microservices](https://developer.nvidia.com/blog/enhance-your-ai-agent-with-data-flywheels-using-nvidia-nemo-microservices/)
 * [Nvidia Releases NeMo Microservices To Streamline AI Agent Development](https://www.forbes.com/sites/janakirammsv/2025/04/25/nvidia-releases-nemo-microservices-to-streamline-ai-agent-development/)
 * [Overview of NeMo Microservices](https://docs.nvidia.com/nemo/microservices/latest/about/index.html)
@@ -308,7 +306,7 @@ You can also learn more about Flywheels here:
 - Training and Evaluation:
   - In-context learning (ICL) with configurable parameters
   - LoRA-based fine-tuning support
-  - Automated data splitting for evaluation
+  - **Automated stratified data splitting** using scikit-learn for balanced datasets
 - Deployment Infrastructure:
   - Docker Compose setup for development
   - Celery workers for background processing
@@ -392,7 +390,7 @@ For details on the architecture of a Flywheel and the components of this Bluepri
 
 | Requirement Type | Details |
 |-------------------------|---------|
-| Minimum GPU | **Self-hosted LLM Judge**: 6× (NVIDIA H100 or A100 GPUs)<br>**Remote LLM Judge**: 2× (NVIDIA H100 or A100 GPUs) |
+| Minimum GPU | **Self-hosted LLM Judge**: 6× (NVIDIA H100, or A100 GPUs)<br>**Remote LLM Judge**: 2× (NVIDIA H100, or A100 GPUs) |
 | Cluster | Single-node NVIDIA GPU cluster on Linux with cluster-admin permissions |
 | Disk Space | At least 200 GB free |
 | Software | Python 3.11<br>Docker Engine<br>Docker Compose v2 |
@@ -417,10 +415,16 @@ This ensures that only **one** Flywheel experiment can allocate GPUs at any give
 
 - Review the [Architecture Overview](./docs/01-architecture.md)
 - Follow the [Quickstart Guide](./docs/02-quickstart.md) to deploy this blueprint
-- Explore the full [API Specification](./openapi.json) to understand all available endpoints
-- Read the [Audience Guide](./docs/04-audience-guide.md) to understand stakeholder responsibilities
+- Read the [Configuration Guide](./docs/03-configuration.md) for detailed setup options
+- Understand your role with the [Audience Guide](./docs/04-audience-guide.md)
 - Review [Limitations & Best Practices](./docs/05-limitations-best-practices.md) before promoting any model
-- Review the [Evaluation Types and Metrics](./docs/06-evaluation-types-and-metrics.md) to understand available evaluation types.
+- Learn about [Evaluation Types and Metrics](./docs/06-evaluation-types-and-metrics.md)
+- Integrate with the [API Reference](./docs/07-api-reference.md) for programmatic access
+- Understand [Workflow Orchestration](./docs/08-workflow-orchestration.md) for debugging and customization
+- Explore [NeMo Platform Integration](./docs/09-nemo-platform-integration.md) for advanced features
+- Deploy in production using the [Production Deployment Guide](./docs/10-production-deployment.md)
+- Set up Kubernetes with [Helm Installation](./docs/11-helm-installation.md)
+- Extract models using [LoRA Model Extraction](./docs/12-lora-model-extraction.md)
 
 ## Available Customizations
 
@@ -430,10 +434,10 @@ The following are some of the customizations that you can make after you complet
 |----------|-------------|------------------|
 | [Environment Variables](docs/03-configuration.md#environment-variables) | Configure system using environment variables | • **Required Variables**: NGC_API_KEY, HF_TOKEN<br>• **Optional Variables**: ES_COLLECTION_NAME, ELASTICSEARCH_URL, MONGODB_URL, REDIS_URL<br>• **Configuration**: Via .env file or system environment |
 | [Model Integration](docs/03-configuration.md#model-integration) | Configure and deploy LLM models | • **Currently Supported**: Meta Llama 3.2 1B Instruct<br>• **Context Length**: Up to 32768 tokens<br>• **Hardware Config**: GPU support (configurable), PVC size (configurable)<br>• **Version Control**: Model tags supported |
-| [Evaluation Settings](docs/03-configuration.md#evaluation-settings) | Configure data splitting and evaluation parameters | • **Data Split**: Eval size (default: 20), validation ratio (0.1)<br>• **Minimum Records**: 50 records required<br>• **Reproducibility**: Optional random seed<br>• **ICL Settings**: Context length (max 32768), reserved tokens (4096), examples (min 1, max 3) |
+| [Evaluation Settings](docs/03-configuration.md#evaluation-settings) | Configure data splitting and evaluation parameters | • **Data Split**: Eval size (default: 20), validation ratio (0.1)<br>• **Minimum Records**: 50 records required<br>• **Reproducibility**: Optional random seed<br>• **ICL Settings**: Context length (max 32768), reserved tokens (4096), examples (min 1, max 3)<br>• **Example Selection**: Uniform tool distribution or embedding similarity<br>• **Embedding Support**: Local/remote embedding NIMs for similarity-based selection |
 | [Fine-tuning Options](docs/03-configuration.md#fine-tuning-options) | Customize model training | • **Training Type**: SFT (Supervised Fine-Tuning)<br>• **Method**: LoRA with configurable parameters<br>• **Parameters**: epochs (2), batch size (16), learning rate (0.0001)<br>• **LoRA Config**: adapter dimension (32), dropout (0.1) |
 | [Data Infrastructure](docs/03-configuration.md#data-infrastructure) | Configure data storage and processing | • **Storage**: Elasticsearch for logs<br>• **Queue**: Redis for task processing<br>• **Database**: MongoDB for API data<br>• **Processing**: Celery workers with configurable concurrency |
-| [Deployment Options](docs/03-configuration.md#deployment-options) | Infrastructure configuration | • **Development**: Docker Compose with hot reloading<br>• **Services**: API, Celery Worker, Redis, MongoDB, Elasticsearch<br>• **Resource Config**: Network mode, volume mounts, health checks<br>• **Environment**: Configurable URLs and API keys |
+| [Deployment Options](docs/03-configuration.md#deployment-options) | Infrastructure configuration | • **Development**: Docker Compose with hot reloading<br>• **Production**: Kubernetes deployment via [Helm charts](docs/11-helm-installation.md)<br>• **Services**: API, Celery Worker, Redis, MongoDB, Elasticsearch<br>• **Resource Config**: Network mode, volume mounts, health checks<br>• **Environment**: Configurable URLs and API keys |
 
 Refer to the [Configuration Guide](./docs/03-configuration.md) for more information.
 

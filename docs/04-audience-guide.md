@@ -29,6 +29,8 @@ Different stakeholders engage with the Flywheel at different layers. Use the sec
   - Track evaluation scores vs. reference model per workload.
   - Monitor cost deltas for candidate models surfaced by Flywheel.
 
+> **📖 For evaluation metrics details:** See [Evaluation Types and Metrics](06-evaluation-types-and-metrics.md)
+
 ## For Researchers / ML Engineers
 
 - **What you get**:
@@ -43,19 +45,39 @@ Different stakeholders engage with the Flywheel at different layers. Use the sec
   - Flywheel performs *distillation*, not RLHF/DPO.
   - The system does **not** ingest thumbs-up / thumbs-down user feedback; if you want preference-based training, you can extend the pipeline.
 
+> **📖 For model configuration:** See [Model Integration & Training Settings](03-configuration.md#model-integration)  
+> **📖 For evaluation implementation:** See [Evaluation Types and Metrics](06-evaluation-types-and-metrics.md)  
+> **📖 For NeMo platform integration:** See [NeMo Platform Integration](09-nemo-platform-integration.md)
+
 ## For Application Engineers
 
-- **Instrumentation Checklist**
+- **Instrumentation Requirements**
 
-  | Task | Minimal | Local quick-start (manual) | Production exporter (auto) |
-  |------|---------|---------------------------|----------------------------|
-  | Log prompt & completion text | ✅ | Provided JSONL sample | ✅ (streamed) |
-  | Include `workload_id` | ✅ | Provided JSONL sample | ✅ |
-  | Add long-form `description` |  | Optional | Recommended |
-  | Record latency, tokens_in/out |  | Optional | Recommended |
+  | Task | Required | Optional | Notes |
+  |------|----------|----------|-------|
+  | Log prompt & completion text | ✅ | | Essential for training data |
+  | Include `workload_id` | ✅ | | Critical for data partitioning |
+  | Include `client_id` | ✅ | | Required for job identification |
+  | Add long-form `description` | | ✅ | Recommended for better insights |
+  | Record latency, tokens_in/out | | ✅ | Useful for performance analysis |
 
-- **Implementation Tips**:
-  1. Use the provided exporter or send JSON lines directly to Elasticsearch.
-  2. Keep log payload sizes reasonable; truncate long passages if not relevant.
-- **Debugging Tools**: `./scripts/run-dev.sh` spins up Kibana (browse `log-store-*` index) for real-time ingestion checks, and Flower for task queue status.
-- **After Flywheel Runs**: Query the API endpoint `/api/jobs/{id}` or open the example notebook to review results.
+> **📖 For complete implementation guide:** See [Data Logging for AI Apps](data-logging.md)
+
+- **Implementation Approaches**:
+  1. **Production (Recommended)**: Use continuous log exportation to Elasticsearch
+  2. **Development/Demo**: Use provided JSONL sample data loader
+  3. **Custom Integration**: Direct Elasticsearch integration with your application
+
+> **📖 For data validation requirements:** See [Dataset Validation](dataset-validation.md)
+
+- **Development Tools**: 
+  - Use `./scripts/run-dev.sh` for development environment with Kibana (browse `log-store-*` index) and Flower for task monitoring
+  - Query API endpoint `/api/jobs/{id}` for job status and results
+  - Use example notebooks for interactive exploration
+
+> **📖 For complete API documentation:** See [API Reference](07-api-reference.md)  
+> **📖 For development scripts:** See [Scripts Guide](scripts.md)
+
+- **After Flywheel Runs**: Review results through API endpoints or notebooks to identify promising model candidates for further evaluation.
+
+> **📖 For operational best practices:** See [Limitations & Best Practices](05-limitations-best-practices.md)

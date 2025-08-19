@@ -15,4 +15,8 @@ echo "Clearing Redis volume..."
 echo "Clearing MongoDB volume..."
 "$SCRIPT_DIR/clear_mongodb_volume.sh"
 
+# Clear MLflow volume
+echo "Clearing MLflow volume..."
+"$SCRIPT_DIR/clear_mlflow_volume.sh"
+
 echo "All volumes have been cleared and services restarted."

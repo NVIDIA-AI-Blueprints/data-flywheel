@@ -9,39 +9,7 @@
 
 Think of this flywheel as a discovery and promotion service that surfaces promising smaller models rather than a fully autonomous replacement engine.
 
-## Automatic Resource Cleanup
-
-The Data Flywheel Blueprint includes an **automatic cleanup system** that ensures proper resource management when the system is shut down unexpectedly or when workers are terminated. This prevents resource leaks and ensures clean system state.
-
-### How Automatic Cleanup Works
-
-The `CleanupManager` automatically activates during worker shutdown and performs the following operations:
-
-1. **Detects running resources**: Finds all flywheel runs with `PENDING` or `RUNNING` status
-2. **Identifies active NIMs**: Locates all NVIDIA Inference Microservices with `RUNNING` deployment status
-3. **Cancels running jobs**: 
-   - Cancels active customization jobs through NeMo Customizer
-   - Marks evaluation jobs for cleanup
-4. **Shuts down deployments**: 
-   - Stops all running NIM deployments via NeMo Deployment Manager
-   - Shuts down local LLM judge deployments (remote judges are unaffected)
-5. **Updates database state**: Marks all resources as `CANCELLED` with appropriate timestamps and error messages
-
-### When Automatic Cleanup Triggers
-
-The cleanup manager activates automatically in these scenarios:
-
-- **Worker shutdown**: When Celery workers receive shutdown signals (SIGTERM, SIGINT)
-- **Container termination**: When Docker containers are stopped or killed
-- **System restart**: During planned or unplanned system restarts
-
-### Safety Features
-
-- **Database-driven**: Only cleans up resources marked as running in the database
-- **Error resilience**: Continues cleanup even if individual operations fail
-- **Comprehensive logging**: Records all cleanup actions and errors for debugging
-
-### Data Flywheel Blueprint Architecture Diagram
+## Data Flywheel Blueprint Architecture Diagram
 
 The following diagram illustrates the high-level architecture of the Data Flywheel Blueprint:
 
@@ -53,10 +21,12 @@ The following diagram illustrates the high-level architecture of the Data Flywhe
 
 ### How Production Logs Flow Into the Flywheel
 
-Use a continuous log exportation flow for your production environments.
+> **📖 For complete data logging implementation:** See [Data Logging Guide](data-logging.md)
+
+Use a continuous log exportation flow for your production environments:
 
 1. **Application emits JSON**: Every prompt/response is captured by your service (language-agnostic; any HTTP middleware, logger, or side-car works).
-2. **Exporter ships records**: A lightweight log exporter (Filebeat/Fluent-bit example shown below) forwards those records to Elasticsearch in near real-time.
+2. **Exporter ships records**: A lightweight log exporter forwards those records to Elasticsearch in near real-time.
 3. **Flywheel API pulls data**: Workers query Elasticsearch to build *evaluation* and *fine-tune* splits automatically.
 
 ```mermaid
@@ -93,8 +63,6 @@ sequenceDiagram
     end
     API->>App: Notify of new model
 ```
-
-The Python loader script referenced in the [Quickstart](./02-quickstart.md) is for *demo* environments only or for using the Flywheel as a short-lived tool for periodically orchestrating a run.
 
 ## Deployment Architecture
 
@@ -139,3 +107,34 @@ flowchart TD
 
     admin["Admin app<br>(e.g. notebook)"] --> api
 ```
+
+## Automatic Resource Cleanup
+
+The Data Flywheel Blueprint includes an **automatic cleanup system** that ensures proper resource management when the system is shut down unexpectedly or when workers are terminated. This prevents resource leaks and ensures clean system state.
+
+### How Automatic Cleanup Works
+
+The `CleanupManager` automatically activates during worker shutdown and performs the following operations:
+
+1. **Detects running resources**: Finds all flywheel runs with `PENDING` or `RUNNING` status
+2. **Identifies active NIMs**: Locates all NVIDIA Inference Microservices with `RUNNING` deployment status
+3. **Cancels running jobs**: 
+   - Cancels active customization jobs through NeMo Customizer
+4. **Shuts down deployments**: 
+   - Stops all running NIM deployments via NeMo Deployment Manager
+   - Shuts down local LLM judge deployments (remote judges are unaffected)
+5. **Updates database state**: Marks all resources as `CANCELLED` with appropriate timestamps and error messages
+
+### When Automatic Cleanup Triggers
+
+The cleanup manager activates automatically in these scenarios:
+
+- **Worker shutdown**: When Celery workers receive shutdown signals (SIGTERM, SIGINT)
+- **Container termination**: When Docker containers are stopped, triggering Celery worker shutdown
+- **System restart**: During planned or unplanned system restarts
+
+### Safety Features
+
+- **Database-driven**: Only cleans up resources marked as running in the database
+- **Error resilience**: Continues cleanup even if individual operations fail
+- **Comprehensive logging**: Records all cleanup actions and errors for debugging
