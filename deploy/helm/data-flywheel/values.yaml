@@ -173,8 +173,8 @@ redis:
 # Data Flywheel server configuration
 foundationalFlywheelServer:
   image:
-    repository: nvcr.io/nvstaging/blueprint/foundational-flywheel-server
-    tag: "25.08"
+    repository: nvcr.io/nvidia/blueprint/foundational-flywheel-server
+    tag: "0.3.0"
   imagePullSecrets:
     - name: nvcrimagepullsecret
   # Deployments of the foundational flywheel server
