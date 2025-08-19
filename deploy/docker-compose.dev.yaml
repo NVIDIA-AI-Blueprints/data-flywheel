@@ -33,6 +33,7 @@ services:
       - "5555:5555"
     environment:
       - ELASTICSEARCH_URL=http://elasticsearch:9200
+      - ES_COLLECTION_NAME=${ES_COLLECTION_NAME:-flywheel}
       - REDIS_URL=redis://redis:6379/0
       - MONGODB_URL=mongodb://mongodb:27017
       - MONGODB_DB=flywheel

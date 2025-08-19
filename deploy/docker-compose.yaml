@@ -10,6 +10,7 @@ services:
       - "8000:8000"
     environment:
       - ELASTICSEARCH_URL=http://localhost:9200
+      - ES_COLLECTION_NAME=${ES_COLLECTION_NAME:-flywheel}
       - REDIS_URL=redis://localhost:6379/0
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
@@ -38,6 +39,7 @@ services:
       target: dev
     environment:
       - ELASTICSEARCH_URL=http://localhost:9200
+      - ES_COLLECTION_NAME=${ES_COLLECTION_NAME:-flywheel}
       - REDIS_URL=redis://localhost:6379/0
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
@@ -68,6 +70,7 @@ services:
       target: dev
     environment:
       - ELASTICSEARCH_URL=http://localhost:9200
+      - ES_COLLECTION_NAME=${ES_COLLECTION_NAME:-flywheel}
       - REDIS_URL=redis://localhost:6379/0
       - MONGODB_URL=mongodb://localhost:27017
       - MONGODB_DB=flywheel
