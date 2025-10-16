@@ -60,34 +60,27 @@ volcano:
 # Elasticsearch configuration
 elasticsearch:
   enabled: true
+  image:
+    repository: docker.elastic.co/elasticsearch/elasticsearch
+    tag: 8.12.2
   fullnameOverride: df-elasticsearch
-  security:
-    enabled: false
-  master:
-    masterOnly: false
-    replicaCount: 1
-    resources:
-      limits:
-        memory: 4Gi
-      requests:
-        memory: 4Gi
-    heapSize: 2g
-  # disable the other dedicated roles that Bitnami enables by default
-  data:
-    replicaCount: 0
-  ingest:
-    replicaCount: 0
-  coordinating:
-    replicaCount: 0
-  metrics:
-    enabled: false
-  # ── Elasticsearch.yml overrides ───
-  extraConfig:
+  service:
+    type: NodePort
+    port: 9200
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1
+      ephemeral-storage: "5Gi"
+    limits:
+      memory: 4Gi
+      cpu: 2
+      ephemeral-storage: "10Gi"
+  env:
+    "ES_JAVA_OPTS": "-Xms2g -Xmx2g"
     "network.host": "0.0.0.0"
     "xpack.security.enabled": "false"
-    "xpack.security.enrollment.enabled": "false"
-    "xpack.security.transport.ssl.enabled": "false"
-    "xpack.security.http.ssl.enabled": "false"
+    "discovery.type": "single-node"
     "cluster.routing.allocation.disk.watermark.low": "99%"
     "cluster.routing.allocation.disk.watermark.high": "99%"
     "cluster.routing.allocation.disk.watermark.flood_stage": "99%"
@@ -118,7 +111,7 @@ kibana:
       cpu: 2000m
       memory: 8Gi
   env:
-    ELASTICSEARCH_HOSTS: http://df-elasticsearch:9200
+    ELASTICSEARCH_HOSTS: http://df-elasticsearch-service:9200
     ELASTICSEARCH_REQUEST_TIMEOUT: 120000
     ELASTICSEARCH_STARTUP_TIMEOUT: 120000
     logging.root.level: off
@@ -136,39 +129,41 @@ kibana:
 mongodb:
   enabled: true
   fullnameOverride: "df-mongodb"
-  auth:
-    enabled: false
-  extraEnvVars:
-    - name: MONGODB_LOG_LEVEL
-      value: "error"
-    - name: MONGODB_DB
-      value: "flywheel"
-  extraInitContainers:
-    - name: init-mongodb
-      image: busybox
-      command: ["sh", "-c", "mkdir -p /data/db"]
-      volumeMounts:
-        - name: mongodb-data
-          mountPath: /data/db
-  command: ["mongod", "--bind_ip_all", "--quiet", "--setParameter=diagnosticDataCollectionEnabled=false", "--setParameter=logComponentVerbosity={ \"network\": { \"verbosity\": 0 }, \"command\": { \"verbosity\": 0 }, \"control\": { \"verbosity\": 0 } }", "--dbpath=/data/db"]
-  extraVolumeMounts:
-    - name: mongodb-data
-      mountPath: /data/db
-  extraVolumes:
-    - name: mongodb-data
-      emptyDir: {}
+  image:
+    repository: mongo
+    tag: 7.0
+  service:
+    type: NodePort
+    port: 27017
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+      ephemeral-storage: "2Gi"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
+      ephemeral-storage: "5Gi"
 
 # Redis configuration
 redis:
   enabled: true
-  auth:
-    enabled: false
+  image:
+    repository: redis
+    tag: 7.2-alpine
   fullnameOverride: "df-redis"
-  command: ["redis-server", "--appendonly", "yes"]
-  master:
-    disableCommands: []
-  replicas:
-    disableCommands: []
+  service:
+    type: NodePort
+    port: 6379
+  resources:
+    requests:
+      memory: "1Gi"
+      cpu: "500m"
+      ephemeral-storage: "2Gi"
+    limits:
+      memory: "2Gi"
+      cpu: "1"
+      ephemeral-storage: "5Gi"
 
 # Data Flywheel server configuration
 foundationalFlywheelServer:
@@ -188,9 +183,9 @@ foundationalFlywheelServer:
         type: NodePort
         port: 8000
       env:
-        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
-        REDIS_URL: "redis://df-redis-master:6379/0"
-        MONGODB_URL: "mongodb://df-mongodb:27017"
+        ELASTICSEARCH_URL: "http://df-elasticsearch-service:9200"
+        REDIS_URL: "redis://df-redis-service:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb-service:27017"
         MONGODB_DB: "flywheel"
         ES_COLLECTION_NAME: "flywheel"
       resources:
@@ -211,22 +206,15 @@ foundationalFlywheelServer:
         - "0.0.0.0"
         - "--port"
         - "8000"
-      dependsOn:
-        - name: df-elasticsearch-master
-          port: 9200
-        - name: df-redis-master
-          port: 6379
-        - name: df-mongodb
-          port: 27017
     # celeryWorker is the worker that handles the tasks
     celeryWorker:
       # celeryWorker is enabled by default and must be enabled to use the flywheel server
       enabled: true
       fullnameOverride: "df-celery-worker"
       env:
-        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
-        REDIS_URL: "redis://df-redis-master:6379/0"
-        MONGODB_URL: "mongodb://df-mongodb:27017"
+        ELASTICSEARCH_URL: "http://df-elasticsearch-service:9200"
+        REDIS_URL: "redis://df-redis-service:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb-service:27017"
         MONGODB_DB: "flywheel"
         ES_COLLECTION_NAME: "flywheel"
       resources:
@@ -257,9 +245,9 @@ foundationalFlywheelServer:
       enabled: true
       fullnameOverride: "df-celery-parent-worker"
       env:
-        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
-        REDIS_URL: "redis://df-redis-master:6379/0"
-        MONGODB_URL: "mongodb://df-mongodb:27017"
+        ELASTICSEARCH_URL: "http://df-elasticsearch-service:9200"
+        REDIS_URL: "redis://df-redis-service:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb-service:27017"
         MONGODB_DB: "flywheel"
         ES_COLLECTION_NAME: "flywheel"
       resources:
@@ -316,9 +304,9 @@ foundationalFlywheelServer:
         type: NodePort
         port: 5555
       env:
-        ELASTICSEARCH_URL: "http://df-elasticsearch:9200"
-        REDIS_URL: "redis://df-redis-master:6379/0"
-        MONGODB_URL: "mongodb://df-mongodb:27017"
+        ELASTICSEARCH_URL: "http://df-elasticsearch-service:9200"
+        REDIS_URL: "redis://df-redis-service:6379/0"
+        MONGODB_URL: "mongodb://df-mongodb-service:27017"
         MONGODB_DB: "flywheel"
         ES_COLLECTION_NAME: "flywheel"
       resources:
@@ -468,7 +456,30 @@ nemo-microservices-helm-chart:
   existingSecret: ngc-api
   existingImagePullSecret: nvcrimagepullsecret
 
+  global:
+    security:
+      allowInsecureImages: true
+
   data-store:
+    postgresql-ha:
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
+      postgresql:
+        image:
+          repository: bitnamilegacy/postgresql
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
     external:
       rootUrl: http://data-store.test
       domain: data-store.test
@@ -478,12 +489,52 @@ nemo-microservices-helm-chart:
   guardrails:
     env:
       FETCH_NIM_APP_MODELS: "True"
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
+
+  entity-store:
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
+
+  auditor:
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
 
   ingress:
     enabled: true
 
   customizer:
     enabled: true
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
     modelsStorage:
       storageClassName: standard
     customizationTargets:
@@ -502,6 +553,17 @@ nemo-microservices-helm-chart:
           volumeAccessMode: "ReadWriteOnce"
     opentelemetry-collector:
       enabled: false
+
+  evaluator:
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+      volumePermissions:
+        image:
+          repository: bitnamilegacy/os-shell
+      metrics:
+        image:
+          repository: bitnamilegacy/postgres-exporter
 
   deployment-management:
     deployments:

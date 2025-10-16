@@ -6,18 +6,6 @@ dependencies:
   condition: nemo-microservices-helm-chart.enabled
   repository: https://helm.ngc.nvidia.com/nvidia/nemo-microservices
   version: '25.8.0'
-- name: elasticsearch
-  condition: elasticsearch.enabled
-  repository: https://charts.bitnami.com/bitnami
-  version: '20.0.0'
-- name: redis
-  condition: redis.enabled
-  repository: https://charts.bitnami.com/bitnami
-  version: '19.6.4'
-- name: mongodb
-  condition: mongodb.enabled
-  repository: https://charts.bitnami.com/bitnami
-  version: '15.6.26'
 type: application
-version: "0.3.0"
-appVersion: "0.3.0"
+version: "0.3.1"
+appVersion: "0.3.1"

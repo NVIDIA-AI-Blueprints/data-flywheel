@@ -41,9 +41,9 @@ This document describes the configurable endpoints used by the Data Flywheel ser
 ## Data Flywheel Configuration
 
 ### NMP Integration URLs
-- **NEMO_BASE_URL**: Base URL for NeMo services (default: "http://nemo-deployment-management:8000")
-- **NIM_BASE_URL**: Base URL for NIM services (default: "http://nemo-nim-proxy:8000")
-- **DATASTORE_BASE_URL**: Base URL for data store (default: "http://nemo-data-store:3000")
+- **NEMO_BASE_URL**: Base URL for NeMo services (default: "http://nemo.test")
+- **NIM_BASE_URL**: Base URL for NIM services (default: "http://nim.test")
+- **DATASTORE_BASE_URL**: Base URL for data store (default: "http://data-store.test")
 
 ## Configuration Notes
 

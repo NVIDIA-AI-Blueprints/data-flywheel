@@ -15,8 +15,10 @@ NC='\033[0m'
 # Associative array of allowed services with their default ports
 declare -A ALLOWED_SERVICES=(
     ["df-api-service"]="8000"
-    ["df-elasticsearch"]="9200"
+    ["df-elasticsearch-service"]="9200"
     ["df-mlflow-service"]="5000"
+    ["df-mongodb-service"]="27017"
+    ["df-redis-service"]="6379"
     ["df-kibana-service"]="5601"
     ["df-flower-service"]="5555"
 )
@@ -42,11 +44,13 @@ OPTIONS:
     -h, --help        Show this help message and exit
 
 ALLOWED SERVICES:
-    - df-api-service     (original: 8000)
-    - df-elasticsearch   (original: 9200)
-    - df-mlflow-service  (original: 5000)
-    - df-mongodb         (original: 27017)
-    - df-kibana-service  (original: 5601)
+    - df-api-service             (original: 8000)
+    - df-elasticsearch-service   (original: 9200)
+    - df-mlflow-service          (original: 5000)
+    - df-redis-service           (original: 6379)
+    - df-mongodb-service         (original: 27017)
+    - df-redis-service           (original: 6379)
+    - df-kibana-service          (original: 5601)
 
 EXAMPLES:
     ./forward-ports.sh --help

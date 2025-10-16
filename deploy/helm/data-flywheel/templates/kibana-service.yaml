@@ -1,3 +1,4 @@
+---
 {{- if not .Values.profile.production.enabled }}
 apiVersion: v1
 kind: Service

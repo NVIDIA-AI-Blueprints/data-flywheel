@@ -18,7 +18,7 @@ if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
 fi
 
 # Retrieve the MongoDB pod name
-MONGODB_POD=$(kubectl get pods -l app.kubernetes.io/name=mongodb -o jsonpath='{.items[0].metadata.name}')
+MONGODB_POD=$(kubectl get pods -l app=df-mongodb-deployment -o jsonpath='{.items[0].metadata.name}')
 
 # Get all databases
 current_dbs=$(kubectl exec -it $MONGODB_POD -n $NAMESPACE -- $MONGODB_CLI --eval "show dbs")

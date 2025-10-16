@@ -57,7 +57,7 @@
 │ ✔          │ greenlet                       │ MIT;; PYTHON-2.0               │
 │ ✔          │ gunicorn                       │ MIT LICENSE                    │
 │ ✔          │ h11                            │ MIT LICENSE                    │
-│ ✖          │ hf-xet                         │                                │
+│ ✔          │ hf-xet                         │ APACHE SOFTWARE LICENSE        │
 │ ✔          │ httpcore                       │ BSD LICENSE                    │
 │ ✔          │ httpx                          │ BSD LICENSE                    │
 │ ✔          │ huggingface-hub                │ APACHE SOFTWARE LICENSE        │

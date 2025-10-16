@@ -1,0 +1,116 @@
+########################################################################################
+# example values for bintnami workaround to used with minikube installation for NMP
+########################################################################################
+
+global:
+  security:
+    allowInsecureImages: true
+
+data-store:
+  postgresql-ha:
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+    postgresql:
+      image:
+        repository: bitnamilegacy/postgresql
+  postgresql:
+    image:
+      repository: bitnamilegacy/postgresql
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+  external:
+    rootUrl: http://data-store.test
+    domain: data-store.test
+  persistence:
+    size: 2Gi
+
+guardrails:
+  env:
+    FETCH_NIM_APP_MODELS: "True"
+  postgresql:
+    image:
+      repository: bitnamilegacy/postgresql
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+
+entity-store:
+  postgresql:
+    image:
+      repository: bitnamilegacy/postgresql
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+
+auditor:
+  postgresql:
+    image:
+      repository: bitnamilegacy/postgresql
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+
+ingress:
+  enabled: true
+
+customizer:
+  enabled: true
+  postgresql:
+    image:
+      repository: bitnamilegacy/postgresql
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+  modelsStorage:
+    storageClassName: standard
+  customizationTargets:
+    overrideExistingTargets: true
+    targets:
+      meta/llama-3.2-1b-instruct@2.0:
+        enabled: true
+      meta/llama-3.2-3b-instruct@2.0:
+        enabled: true
+      meta/llama-3.1-8b-instruct@2.0:
+        enabled: true
+  customizerConfig:
+    training:
+      pvc:
+        storageClass: "standard"
+        volumeAccessMode: "ReadWriteOnce"
+  opentelemetry-collector:
+    enabled: false
+
+evaluator:
+  postgresql:
+    image:
+      repository: bitnamilegacy/postgresql
+    volumePermissions:
+      image:
+        repository: bitnamilegacy/os-shell
+    metrics:
+      image:
+        repository: bitnamilegacy/postgres-exporter
+
+deployment-management:
+  deployments:
+    defaultStorageClass: standard

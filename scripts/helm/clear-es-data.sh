@@ -14,7 +14,7 @@ if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
 fi
 
 # Retrieve the Elasticsearch pod name
-ES_POD=$(kubectl get pods -l app.kubernetes.io/name=elasticsearch -o jsonpath='{.items[0].metadata.name}')
+ES_POD=$(kubectl get pods -l app=df-elasticsearch-deployment -o jsonpath='{.items[0].metadata.name}')
 
 # Execute the http request to the elasticsearch pod
 response=$(kubectl exec -it "$ES_POD" -n "$NAMESPACE" -- curl -X DELETE "http://localhost:9200/_all")

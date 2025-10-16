@@ -16,7 +16,7 @@ if ! kubectl get namespace "$NAMESPACE" &>/dev/null; then
 fi
 
 # Retrieve the Redis pod name
-REDIS_POD=$(kubectl get pods -l app.kubernetes.io/name=redis -o jsonpath='{.items[0].metadata.name}')
+REDIS_POD=$(kubectl get pods -l app=df-redis-deployment -o jsonpath='{.items[0].metadata.name}')
 
 # Flush all data from Redis
 echo "🔄 Flushing all data from Redis..."

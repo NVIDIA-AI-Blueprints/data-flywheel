@@ -1,3 +1,4 @@
+---
 {{- if .Values.profile.mlflow.COMPOSE_PROFILES | eq "mlflow" }}
 apiVersion: apps/v1
 kind: Deployment

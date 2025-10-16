@@ -50,19 +50,28 @@ Authenticate with NGC using `NGC login`. For detailed instructions, see the [NGC
 
 ### 2. Deploy NMP
 
-To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/latest/get-started/setup/index.html) beginner tutorial. These instructions launch NMP using a local Minikube cluster.
+To deploy NMP, follow the [NeMo Microservices Platform Prerequisites](https://docs.nvidia.com/nemo/microservices/25.8.0/get-started/setup/index.html) beginner tutorial. These instructions launch NMP using a local Minikube cluster.
 
 > **Note**
 > Data Flywheel Blueprint has been tested and is compatible with NeMo Microservices Platform (NMP) version 25.8.0.
 
 **Use Manual Installation Only**
 
-For the Data Flywheel Blueprint, use the [Install Manually](https://docs.nvidia.com/nemo/microservices/latest/get-started/setup/minikube-manual.html) option. The deployment scripts option should be avoided as it deploys models outside the namespace of the Data Flywheel and can cause conflict.
+For the Data Flywheel Blueprint, use the [Install Manually](https://docs.nvidia.com/nemo/microservices/25.8.0/get-started/setup/minikube-manual.html) option. The deployment scripts option should be avoided as it deploys models outside the namespace of the Data Flywheel and can cause conflict.
 
-Enable customization for the models
+**Use Override Values File (Bitnami Workaround)**
+
+Due to Bitnami making PostgreSQL images private, you need to use an [override values file](../deploy/override-values.yaml) as a workaround when deploying NMP 25.8.0.
 
 > **Note**
-> To enable customization for specific models, modify the `demo-values.yaml` file in your NMP deployment. Modify the customizer configuration with the models you want to enable for fine-tuning:
+> This is a temporary workaround to resolve the Bitnami PostgreSQL image issue until a new NMP release is tested with the Data Flywheel Blueprint.
+
+**Enable Customization for Models**
+
+Before installing NMP, modify the `demo-values.yaml` file in your NMP deployment directory to enable customization for specific models:
+
+> **Note**
+> To enable customization for specific models, add the following customizer configuration to your `demo-values.yaml` file:
 > 
 > ```yaml
 > customizer:
@@ -84,6 +93,18 @@ Enable customization for the models
 >         storageClass: "standard"
 >         volumeAccessMode: "ReadWriteOnce"
 > ```
+
+**Install NMP with Override Values**
+
+When installing the NMP Helm chart, include both the `demo-values.yaml` and `override-values.yaml` files:
+
+```bash
+helm --namespace default install \
+  nemo nmp/nemo-microservices-helm-chart \
+  -f demo-values.yaml \
+  -f override-values.yaml \
+  --set guardrails.guardrails.nvcfAPIKeySecretName="nvidia-api"
+```
 
 > **Important**
 > The Data Flywheel Blueprint automatically manages model deployment—spinning up or down models in the configured namespace. You don't need to intervene manually. The blueprint manages all aspects of the model lifecycle within the configured namespace.

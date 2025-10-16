@@ -108,12 +108,12 @@ cd deploy/helm/data-flywheel
 
 ```bash
 # Download chart from NGC registry
-helm fetch https://helm.ngc.nvidia.com/nvidia/blueprint/charts/nvidia-blueprint-data-flywheel-0.3.0.tgz \
+helm fetch https://helm.ngc.nvidia.com/nvidia/blueprint/charts/nvidia-blueprint-data-flywheel-0.3.1.tgz \
     --username='$oauthtoken' \
     --password=$NGC_API_KEY
 
 # Extract chart
-tar -xvf nvidia-blueprint-data-flywheel-0.3.0.tgz
+tar -xvf nvidia-blueprint-data-flywheel-0.3.1.tgz
 cd nvidia-blueprint-data-flywheel
 ```
 
@@ -219,25 +219,27 @@ namespace: "nv-nvidia-blueprint-data-flywheel"
 # Elasticsearch configuration
 elasticsearch:
   enabled: true
-  master:
-    replicaCount: 1
-    resources:
-      limits:
-        memory: 4Gi
-      requests:
-        memory: 4Gi
+  resources:
+    ...
+  env:
+    # Environment variables to configure your Elasticsearch, read more: https://www.elastic.co/docs/reference/elasticsearch/configuration-reference/.
+    ...
 
 # MongoDB configuration  
 mongodb:
   enabled: true
-  auth:
-    enabled: false    # Simplified auth for internal cluster use
+  aresources:
+    ...
+  env:
+    ...
 
 # Redis configuration
 redis:
   enabled: true
-  auth:
-    enabled: false    # Simplified auth for internal cluster use
+  resources:
+    ...
+  env:
+    ...
 ```
 
 #### Data Flywheel Server Configuration
@@ -247,7 +249,7 @@ redis:
 foundationalFlywheelServer:
   image:
     repository: nvcr.io/nvidia/blueprint/foundational-flywheel-server
-    tag: "0.3.0"
+    tag: "0.3.1"
   
   deployments:
     api:
@@ -288,12 +290,15 @@ profile:
 
 # Reduced resource requirements for development
 elasticsearch:
-  master:
-    resources:
-      limits:
-        memory: 2Gi
-      requests:
-        memory: 2Gi
+  resources:
+    requests:
+      memory: 1Gi
+      cpu: 1
+      ephemeral-storage: "2Gi"
+    limits:
+      memory: 2Gi
+      cpu: 2
+      ephemeral-storage: "5Gi"
 
 # Enable development tools (Flower is automatically enabled when profile.production.enabled is false)
 profile:
@@ -313,15 +318,15 @@ profile:
 
 # Enhanced resource allocation
 elasticsearch:
-  master:
-    replicaCount: 3              # High availability
-    resources:
-      limits:
-        memory: 8Gi
-        cpu: 4
-      requests:
-        memory: 8Gi
-        cpu: 2
+  resources:
+    requests:
+      memory: 2Gi
+      cpu: 1
+      ephemeral-storage: "10Gi"
+    limits:
+      memory: 4Gi
+      cpu: 2
+      ephemeral-storage: "20Gi"
 
 # Production storage configuration (for NeMo Microservices components)
 nemo-microservices-helm-chart:
@@ -571,14 +576,11 @@ data-flywheel-postgresql-0                                        1/1     Runnin
 df-api-deployment-xxx                                             1/1     Running   0               7m
 df-celery-parent-worker-deployment-xxx                            1/1     Running   2 (6m33s ago)   7m
 df-celery-worker-deployment-xxx                                   1/1     Running   2 (6m24s ago)   6m59s
-df-elasticsearch-master-0                                         1/1     Running   0               7m
+df-elasticsearch-deployment-xxx                                   1/1     Running   0               7m
 df-mlflow-deployment-xxx                                          1/1     Running   0               6m59s
 df-mongodb-xxx                                                    1/1     Running   0               7m2s
-df-redis-master-0                                                 1/1     Running   0               6m59s
-df-redis-replicas-0                                               1/1     Running   0               6m59s
-df-redis-replicas-1                                               1/1     Running   0               6m10s
-df-redis-replicas-2                                               1/1     Running   0               5m40s
-modeldeployment-dfwbp-meta-llama-3-3-70b-instruct-xxx   0/1     Running   1 (34s ago)     6m50s
+df-redis-deployment-xxx                                           1/1     Running   0               6m59s
+modeldeployment-dfwbp-meta-llama-3-3-70b-instruct-xxx             0/1     Running   1 (34s ago)     6m50s
 ```
 
 ## Post-Installation Setup
@@ -648,7 +650,7 @@ Example:
 # Forward all services for non-production
 ./scripts/helm/forward-ports.sh \
   df-api-service 8000 \
-  df-elasticsearch 9200 \
+  df-elasticsearch-service 9200 \
   df-mlflow-service 5000 \
   df-kibana-service 5601 \
   df-flower-service 5555
@@ -658,7 +660,7 @@ Example:
 # Forward essential services for production
 ./scripts/helm/forward-ports.sh \
   df-api-service 8000 \
-  df-elasticsearch 9200 \
+  df-elasticsearch-service 9200 \
   df-mlflow-service 5000
 ```
 
@@ -940,28 +942,10 @@ docker login nvcr.io
 # Password: <NGC_API_KEY>
 
 # Test image pull manually
-docker pull nvcr.io/nvidia/blueprint/foundational-flywheel-server:0.3.0
+docker pull nvcr.io/nvidia/blueprint/foundational-flywheel-server:0.3.1
 
 # Check Kubernetes secret creation
 kubectl get secret nvcrimagepullsecret -o yaml
-```
-
-#### Resource Constraint Issues
-
-**Problem**: Pods stuck in `Pending` state due to insufficient resources
-
-```bash
-# Check node resources
-kubectl describe nodes
-
-# Check resource requests vs limits
-kubectl describe pod <pending-pod-name>
-
-# Reduce resource requirements temporarily
-helm upgrade data-flywheel . \
-  --set elasticsearch.master.resources.requests.memory=2Gi \
-  --set elasticsearch.master.resources.limits.memory=2Gi \
-  --reuse-values
 ```
 
 ### Runtime Issues
@@ -995,14 +979,17 @@ kubectl describe pvc <pvc-name>
 
 ```bash
 # Test internal DNS resolution
-kubectl exec -it deployment/df-api-deployment -- nslookup df-elasticsearch
+kubectl run busybox --rm -it --restart=Never -n nv-nvidia-blueprint-data-flywheel \
+  --image=debian:stable-slim -- \
+  getent hosts df-elasticsearch-service
 
 # Check service endpoints
 kubectl get endpoints
 
 # Test service connectivity
-kubectl exec -it deployment/df-api-deployment -- \
-  curl -s http://df-elasticsearch:9200/_cluster/health
+kubectl run curlbox --rm -it --restart=Never -n nv-nvidia-blueprint-data-flywheel \
+  --image=curlimages/curl -- \
+  curl -s http://df-elasticsearch-service:9200/_cluster/health
 
 # Verify network policies (if any)
 kubectl get networkpolicies
@@ -1024,81 +1011,6 @@ kubectl get daemonset -n kube-system | grep nvidia
 
 # Test GPU access in pod
 kubectl exec -it <nim-pod-name> -- nvidia-smi
-```
-
-### Performance Optimization
-
-#### Memory and CPU Tuning
-
-For high-throughput workloads:
-
-```yaml
-# Optimize Elasticsearch
-elasticsearch:
-  master:
-    heapSize: 4g                              # Increase heap size
-    resources:
-      limits:
-        memory: 8Gi
-        cpu: 4
-      requests:
-        memory: 8Gi  
-        cpu: 2
-
-# Increase Celery worker concurrency
-foundationalFlywheelServer:
-  deployments:
-    celeryWorker:
-      replicas: 3                             # Multiple worker instances
-      env:
-        CELERY_CONCURRENCY: "10"              # Higher concurrency per worker
-```
-
-#### Storage Optimization
-
-For better I/O performance:
-
-```yaml
-# Use faster storage class
-elasticsearch:
-  master:
-    persistence:
-      storageClass: "fast-ssd"                # Use SSD storage
-      size: 100Gi
-
-mongodb:
-  persistence:
-    storageClass: "fast-ssd"
-    size: 50Gi
-```
-
-#### Network Configuration
-
-For improved service communication:
-
-```bash
-# Enable service mesh (if available)
-kubectl label namespace nv-nvidia-blueprint-data-flywheel istio-injection=enabled
-
-# Configure resource limits for network-intensive workloads
-kubectl patch deployment df-api-deployment -p '
-{
-  "spec": {
-    "template": {
-      "spec": {
-        "containers": [{
-          "name": "df-api",
-          "resources": {
-            "limits": {
-              "memory": "4Gi",
-              "cpu": "2"
-            }
-          }
-        }]
-      }
-    }
-  }
-}'
 ```
 
 ### Monitoring and Debugging
@@ -1144,7 +1056,7 @@ kubectl logs -f deployment/df-api-deployment
 kubectl logs -f deployment/df-celery-worker-deployment
 
 # Monitor infrastructure logs
-kubectl logs -f deployment/df-elasticsearch-master
+kubectl logs -f deployment/df-elasticsearch-deployment
 ```
 
 ### Updates and Rollbacks
@@ -1259,7 +1171,7 @@ kubectl get hpa
 
 ```bash
 # Backup Elasticsearch indices
-export ES_POD=$(kubectl get pods -l app.kubernetes.io/name=elasticsearch -o jsonpath='{.items[0].metadata.name}')
+export ES_POD=$(kubectl get pods -l app=df-elasticsearch-deployment -o jsonpath='{.items[0].metadata.name}')
 
 kubectl exec $ES_POD -- \
   curl -X PUT "localhost:9200/_snapshot/backup" \
@@ -1268,7 +1180,7 @@ kubectl exec $ES_POD -- \
 
 # Backup MongoDB data
 ```bash
-kubectl exec deployment/df-mongodb -- \
+kubectl exec deployment/df-mongodb-deployment -- \
   mongodump --out /tmp/mongodb-backup/mongodb-$(date +%Y%m%d)
 ```
 
