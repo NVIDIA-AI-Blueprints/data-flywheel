@@ -163,153 +163,88 @@ The Flywheel Service represents the primary development effort for this blueprin
   - NeMo microservices service integration
 
 ### Job Configuration
-When scheduling a job, the following parameters are required:
+When scheduling a job, the following parameters are available:
 ```json
 {
     "client_id": "string (required)",
     "workload_id": "string (required)",
-    "webhook_uri": "string (optional)",
-    "nim_list": ["string"] (optional)
+    "job_type": "llm_job | embedding_job (optional, default: llm_job)",
+    "config_name": "string (optional)",
+    "data_split_config": {
+        "eval_size": 100,
+        "val_ratio": 0.1,
+        "min_total_records": 50,
+        "limit": 1000
+    }
 }
 ```
 - `client_id`: Unique identifier for the client organization
 - `workload_id`: Identifier for the specific workload
-- `webhook_uri`: Optional callback URL for job status updates
-- `nim_list`: Optional list of specific NIMs to evaluate
+- `job_type`: Type of job to run (LLM fine-tuning or embedding fine-tuning)
+- `config_name`: Optional name of custom configuration to use
+- `data_split_config`: Optional configuration for data splitting and processing
 
 ### Elasticsearch Logging Schema
-All interactions must be logged to Elasticsearch using the following Pydantic model:
+All interactions are logged to Elasticsearch for data collection and analysis. The logging system captures:
 
-```python
-class ElasticsearchLogEntry(BaseModel):
-    """Schema for logging interactions to Elasticsearch"""
-    request: OpenAIChatRequest
-    response: OpenAIChatResponse
-    timestamp: float = Field(description="Unix timestamp with millisecond precision")
-    client_id: str = Field(description="Unique identifier for the client organization")
-    workload_id: str = Field(description="Identifier for the specific workload")
-```
+- Request and response data from AI interactions
+- Timestamp information with millisecond precision
+- Client and workload identifiers for data organization
+- Structured data for downstream processing
 
 Key requirements:
-- All fields are required
-- `timestamp` must be a Unix timestamp with millisecond precision
-- `client_id` and `workload_id` must match the job configuration
-- The schema enforces type safety and validation
+- All logged interactions include client_id and workload_id for proper data segmentation
+- Timestamps use Unix format with millisecond precision
+- Data is structured to support automated dataset creation
+- Logging integrates with the RecordExporter for data retrieval
 
 ### Job Configuration Schema
 Job scheduling is configured using the following Pydantic model:
 
 ```python
-from typing import Optional, List
-from pydantic import BaseModel, Field, HttpUrl
+from typing import Literal
+from pydantic import BaseModel, Field
+from src.config import DataSplitConfig
 
-class JobConfiguration(BaseModel):
-    """Configuration for scheduling a new evaluation job"""
-    client_id: str = Field(
-        description="Unique identifier for the client organization",
-        min_length=1
-    )
+class JobRequest(BaseModel):
+    """Request model for creating a new job."""
+    
     workload_id: str = Field(
-        description="Identifier for the specific workload",
-        min_length=1
+        ...,
+        description="The unique identifier of the workload to process",
+        examples=["workload_123"],
     )
-    webhook_uri: Optional[HttpUrl] = Field(
-        default=None,
-        description="Optional callback URL for job status updates"
+    
+    client_id: str = Field(
+        ...,
+        description="The unique identifier of the client to process",
+        examples=["client_123"],
     )
-    nim_list: Optional[List[str]] = Field(
-        default=None,
-        description="Optional list of specific NIMs to evaluate. If not provided, all supported NIMs will be evaluated."
+    
+    data_split_config: DataSplitConfig | None = Field(
+        None,
+        description="Optional configuration for data splitting. If not provided, default config will be used.",
     )
-
-    class Config:
-        json_schema_extra = {
-            "example": {
-                "client_id": "acme-corp",
-                "workload_id": "chat-support-v1",
-                "webhook_uri": "https://api.acme-corp.com/webhooks/job-status",
-                "nim_list": ["nim-gpt-4", "nim-claude-2"]
-            }
-        }
+    
+    job_type: Literal["llm_job", "embedding_job"] = Field(
+        default="llm_job",
+        description="Type of job to run - either 'llm_job' or 'embedding_job'",
+        examples=["llm_job", "embedding_job"],
+    )
+    
+    config_name: str | None = Field(
+        None,
+        description="Optional name of the configuration to use for this job. If not provided, default config will be used.",
+        examples=["my-llm-config", "production-config"],
+    )
 ```
 
 Key features:
-- Required fields are enforced
-- `webhook_uri` is validated as a proper URL
-- `nim_list` defaults to None (evaluate all NIMs)
-- Includes example configuration
-- Field descriptions for documentation
-- Minimum length validation for IDs
-
-## Key decisions to discuss
-
-### Metadata Handling Strategy
-
-A key architectural decision involves how to handle `client_id` and `workload_id` metadata in requests to NIMs. The challenge arises because:
-- These fields should be passed via the `metadata` attribute of `OpenAIChatRequest`
-- NIMs do not support the `metadata` field and will return 400 errors if it's included
-- The fields are required for proper logging and workload tracking
-
-#### Available Solutions
-
-1. **NIM Modification**
-   - Patch NIM to support metadata fields
-   - Requires Arun to update all LLMs to a new base image
-   - Pros: Cleanest solution
-   - Cons: Not feasible in the short term
-
-2. **Proxy-Based Solution**
-   - Deploy a proxy service (see `proxy.py`) that:
-     - Accepts requests with metadata
-     - Removes metadata before forwarding to NIM
-     - Handles logging to Elasticsearch
-   - Pros:
-     - No changes required to NIM or AIVA
-     - Clean separation of concerns
-     - Can be deployed independently
-   - Cons:
-     - Additional service to maintain
-     - Slight latency overhead
-
-3. **AIVA Workload Routing**
-   - Modify AIVA to route specific workloads to specific NIMs
-   - Use sidecar functionality to hardcode client_id and workload_id
-   - Pros:
-     - No additional services required
-     - Direct integration with AIVA
-   - Cons:
-     - Less flexible
-     - Requires AIVA modifications
-     - Harder to maintain
-
-4. **AIVA Logging**
-   - Move logging responsibility to AIVA
-   - AIVA handles metadata and logging directly
-   - Pros:
-     - No additional services
-     - Direct control over logging
-   - Cons:
-     - Requires AIVA modifications
-     - Less separation of concerns
-     - May complicate AIVA's core functionality
-
-### Recommended Approach
-
-The proxy-based solution (Option 2) is recommended because:
-
-- It provides the cleanest separation of concerns
-- Requires no modifications to existing services
-- Can be deployed and scaled independently
-- Maintains flexibility for future changes
-- Follows the principle of least surprise
-
-The proxy service would:
-
-1. Accept requests with metadata
-2. Extract and store metadata for logging
-3. Remove metadata before forwarding to NIM
-4. Handle all Elasticsearch logging
-5. Support both streaming and non-streaming responses
+- Required fields: `workload_id` and `client_id`
+- Optional data split configuration for custom data processing
+- Job type selection between LLM and embedding workflows
+- Optional configuration name for using custom job configurations
+- Field validation and examples for API documentation
 
 ## Core Components
 
@@ -368,7 +303,7 @@ The proxy service would:
 - Redis for queue management
 - MongoDB for state persistence
 - Elasticsearch for logging
-- NeMo microservices microservices integration
+- NeMo microservices integration
 
 ## Security Considerations
 - API authentication and authorization
