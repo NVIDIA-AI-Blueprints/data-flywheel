@@ -15,7 +15,7 @@ NAMESPACE="default"
 REQUIRED_DISK_GB=200
 REQUIRED_GPUS=2
 NGC_API_KEY="${NGC_API_KEY:-}"
-HELM_CHART_URL="https://helm.ngc.nvidia.com/nvidia/nemo-microservices/charts/nemo-microservices-helm-chart-25.8.0.tgz"
+HELM_CHART_URL="https://helm.ngc.nvidia.com/nvidia/nemo-microservices/charts/nemo-microservices-helm-chart-25.11.0.tgz"
 ADDITIONAL_VALUES_FILES=(demo-values.yaml)
 
 # === Progress Bar Config ===
@@ -507,7 +507,7 @@ download_helm_chart() {
 
   # Clean up any existing chart files/directories
   log "Cleaning up any existing chart files..."
-  rm -rf nemo-microservices-helm-chart-25.8.0.tgz nemo-microservices-helm-chart/
+  rm -rf nemo-microservices-helm-chart-25.11.0.tgz nemo-microservices-helm-chart/
 
   # Check if demo-values.yaml exists, create if missing
   if [[ ! -f "demo-values.yaml" ]]; then
@@ -542,9 +542,12 @@ customizer:
         enabled: true
       meta/llama-3.1-8b-instruct@2.0:
         enabled: true
+      nvidia/nemotron-nano-llama-3.1-8b@1.0:
+        enabled: true
   customizerConfig:
     training:
       pvc:
+        size: 200Gi
         storageClass: "standard"
         volumeAccessMode: "ReadWriteOnce"
 
@@ -588,7 +591,7 @@ install_nemo_microservices () {
 
   sleep 15
 
-  helm install nemo "$HELM_CHART_URL" -f demo-values.yaml -f ./deploy/override-values.yaml --namespace "$NAMESPACE" \
+  helm install nemo "$HELM_CHART_URL" -f demo-values.yaml --namespace "$NAMESPACE" \
     --username='$oauthtoken' \
     --password=$NGC_API_KEY
 
@@ -790,7 +793,7 @@ main() {
   # Initialize progress bar if enabled
   if [[ "$SHOW_PROGRESS_BAR" == "true" ]]; then
     progress_log "Starting NeMo Microservices deployment..."
-    progress_log "Detailed logs will be written to: /tmp/nemo-deploy.log"
+    progress_log "Please check detailed logs at /tmp/nemo-deploy.log in case of deployement failures"
     echo ""
     # Clear the log file
     > /tmp/nemo-deploy.log

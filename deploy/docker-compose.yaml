@@ -1,7 +1,7 @@
 services:
 
   api:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.3.0}
+    # image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.3.0}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -32,7 +32,7 @@ services:
         condition: service_started
 
   celery_worker:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.3.0}
+    # image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.3.0}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -63,7 +63,7 @@ services:
 
 
   celery_parent_worker:
-    image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.3.0}
+    # image: nvcr.io/nvidia/blueprint/foundational-flywheel-server:${TAG:-0.3.0}
     build:
       context: ..
       dockerfile: ./deploy/Dockerfile
@@ -145,6 +145,7 @@ services:
       - "9200:9200"
     volumes:
       - elasticsearch-data:/usr/share/elasticsearch/data
+    restart: always
     ulimits:
       memlock:
         soft: -1
