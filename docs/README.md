@@ -1,6 +1,6 @@
 # Data Flywheel Blueprint Documentation
 
-> **Deprecation notice:** This project is **deprecated**. It is no longer actively maintained, and new production use is not recommended. The documentation below is retained for reference only.
+> **Deprecation notice:** This project is **deprecated**. It is no longer actively maintained, and new production use is not recommended. The blueprint is retained for reference only.
 
 Welcome to the Data Flywheel Blueprint documentation! This guide helps you navigate our comprehensive documentation to find exactly what you need.
 
