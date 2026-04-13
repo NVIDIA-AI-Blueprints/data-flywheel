@@ -1,6 +1,6 @@
 # Data Flywheel Foundational Blueprint
 
-> **Deprecation notice:** This project is **deprecated**. It is no longer actively maintained, and new production use is not recommended. The blueprint is retained for reference only.
+> **Deprecation notice (Apr 2026):** This project is **deprecated**. It is no longer actively maintained, and new production use is not recommended. The blueprint is retained for reference only.
 
 Deploy this blueprint to create a **production-grade autonomous Data Flywheel service** that uses the NeMo Microservices platform to continuously discover and promote more efficient models.
 

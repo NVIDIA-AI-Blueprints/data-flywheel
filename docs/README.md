@@ -1,6 +1,6 @@
 # Data Flywheel Blueprint Documentation
 
-> **Deprecation notice:** This project is **deprecated**. It is no longer actively maintained, and new production use is not recommended. The blueprint is retained for reference only.
+> **Deprecation notice (Apr 2026):** This project is **deprecated**. It is no longer actively maintained, and new production use is not recommended. The blueprint is retained for reference only.
 
 Welcome to the Data Flywheel Blueprint documentation! This guide helps you navigate our comprehensive documentation to find exactly what you need.
 
@@ -149,7 +149,7 @@ graph TD
 
 ## 🤝 Getting Help
 
-- **Deprecation:** This project is no longer actively maintained; see the notice at the top of this page.
+- **Deprecation (Apr 2026):** This project is no longer actively maintained; see the notice at the top of this page.
 - **GitHub Issues:** [Report bugs or request features](https://github.com/NVIDIA-AI-Blueprints/data-flywheel/issues)
 - **Documentation Issues:** Found something unclear? Let us know!
 - **Community:** Join discussions and share experiences
