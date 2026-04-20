@@ -21,10 +21,18 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       automountServiceAccountToken: false
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- include "data-flywheel.podSecurityContext" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: flower
           image: "{{ .Values.foundationalFlywheelServer.image.repository }}:{{ .Values.foundationalFlywheelServer.image.tag }}"
           imagePullPolicy: Always
+          {{- if .Values.openshift.enabled }}
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.foundationalFlywheelServer.deployments.flower.resources | nindent 12 }}
           ports:
@@ -65,6 +73,14 @@ spec:
                   name: {{ .Values.nvidiaApiSecret.name | default "nvidia-api" }}
                   key: {{ .Values.nvidiaApiSecret.key | default "NVIDIA_API_KEY" }}
                   {{ end }}
+            {{- if .Values.openshift.enabled }}
+            - name: HOME
+              value: "/tmp"
+            - name: UV_CACHE_DIR
+              value: "/tmp/.uv-cache"
+            - name: UV_PROJECT_ENVIRONMENT
+              value: "/tmp/.venv"
+            {{- end }}
           command:
             {{- toYaml .Values.foundationalFlywheelServer.deployments.flower.command | nindent 12 }}
 {{- end }}

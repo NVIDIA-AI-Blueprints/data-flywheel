@@ -7,7 +7,7 @@ metadata:
 spec:
   selector:
     app: {{ .Values.elasticsearch.fullnameOverride }}-deployment
-  type: {{ .Values.elasticsearch.service.type }}
+  type: {{ include "data-flywheel.serviceType" . }}
   ports:
     - port: {{ .Values.elasticsearch.service.port }}
 {{- end }}

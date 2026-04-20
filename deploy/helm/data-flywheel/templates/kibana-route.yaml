@@ -1,0 +1,25 @@
+{{- if and .Values.openshift.enabled .Values.openshift.routes.enabled .Values.openshift.routes.kibana.enabled (not .Values.profile.production.enabled) }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.kibana.fullnameOverride }}-route
+  labels:
+    app: {{ .Values.kibana.fullnameOverride }}-deployment
+spec:
+  {{- if .Values.openshift.routes.kibana.host }}
+  host: {{ .Values.openshift.routes.kibana.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.kibana.fullnameOverride }}-service
+    weight: 100
+  port:
+    targetPort: {{ .Values.kibana.service.port }}
+  {{- if .Values.openshift.routes.kibana.tls.enabled }}
+  tls:
+    termination: {{ .Values.openshift.routes.kibana.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.routes.kibana.tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}

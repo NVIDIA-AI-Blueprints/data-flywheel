@@ -60,3 +60,40 @@ Create the name of the service account to use
 {{- default "default" .Values.serviceAccount.name }}
 {{- end }}
 {{- end }}
+
+{{/*
+Generate pod-level security context for OpenShift
+*/}}
+{{- define "data-flywheel.podSecurityContext" -}}
+{{- if .Values.openshift.enabled }}
+runAsNonRoot: true
+seccompProfile:
+  type: {{ .Values.openshift.securityContext.pod.seccompProfile.type }}
+{{- end }}
+{{- end }}
+
+{{/*
+Generate container-level security context for OpenShift
+*/}}
+{{- define "data-flywheel.containerSecurityContext" -}}
+{{- if .Values.openshift.enabled }}
+allowPrivilegeEscalation: {{ .Values.openshift.securityContext.container.allowPrivilegeEscalation }}
+runAsNonRoot: {{ .Values.openshift.securityContext.container.runAsNonRoot }}
+capabilities:
+  drop:
+    {{- range .Values.openshift.securityContext.container.capabilities.drop }}
+    - {{ . }}
+    {{- end }}
+{{- end }}
+{{- end }}
+
+{{/*
+Determine service type based on OpenShift mode
+*/}}
+{{- define "data-flywheel.serviceType" -}}
+{{- if .Values.openshift.enabled -}}
+ClusterIP
+{{- else -}}
+NodePort
+{{- end -}}
+{{- end }}

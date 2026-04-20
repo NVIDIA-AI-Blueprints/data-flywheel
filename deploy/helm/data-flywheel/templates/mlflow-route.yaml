@@ -1,0 +1,25 @@
+{{- if and .Values.openshift.enabled .Values.openshift.routes.enabled .Values.openshift.routes.mlflow.enabled (eq .Values.profile.mlflow.COMPOSE_PROFILES "mlflow") }}
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: {{ .Values.foundationalFlywheelServer.deployments.mlflow.fullnameOverride }}-route
+  labels:
+    app: {{ .Values.foundationalFlywheelServer.deployments.mlflow.fullnameOverride }}-deployment
+spec:
+  {{- if .Values.openshift.routes.mlflow.host }}
+  host: {{ .Values.openshift.routes.mlflow.host }}
+  {{- end }}
+  to:
+    kind: Service
+    name: {{ .Values.foundationalFlywheelServer.deployments.mlflow.fullnameOverride }}-service
+    weight: 100
+  port:
+    targetPort: {{ .Values.foundationalFlywheelServer.deployments.mlflow.service.port }}
+  {{- if .Values.openshift.routes.mlflow.tls.enabled }}
+  tls:
+    termination: {{ .Values.openshift.routes.mlflow.tls.termination }}
+    insecureEdgeTerminationPolicy: {{ .Values.openshift.routes.mlflow.tls.insecureEdgeTerminationPolicy }}
+  {{- end }}
+  wildcardPolicy: None
+{{- end }}

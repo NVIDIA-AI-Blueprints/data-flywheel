@@ -20,18 +20,37 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- include "data-flywheel.podSecurityContext" . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       initContainers:
+        {{- if .Values.openshift.enabled }}
+        - name: create-mlflow-data-folder
+          image: {{ .Values.openshift.initContainer.image }}
+          command: ['sh', '-c', 'mkdir -p /mlruns']
+          volumeMounts:
+            - name: mlflow-data-volume
+              mountPath: /mlruns
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+        {{- else }}
         - name: create-mlflow-data-folder
           image: busybox:1.28
           command: ['sh', '-c', 'mkdir -p /mlruns && chmod 755 /mlruns']
           volumeMounts:
             - name: mlflow-data-volume
               mountPath: /mlruns
+        {{- end }}
       containers:
         - name: mlflow
           image: "{{ .Values.foundationalFlywheelServer.deployments.mlflow.image }}"
           imagePullPolicy: Always
+          {{- if .Values.openshift.enabled }}
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.foundationalFlywheelServer.deployments.mlflow.resources | nindent 12 }}
           ports:
