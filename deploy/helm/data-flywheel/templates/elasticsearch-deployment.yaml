@@ -17,10 +17,18 @@ spec:
         app: {{ .Values.elasticsearch.fullnameOverride }}-deployment
     spec:
       automountServiceAccountToken: false
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- include "data-flywheel.podSecurityContext" . | nindent 8 }}
+      {{- end }}
       containers:
         - name: elasticsearch
           image: "{{ .Values.elasticsearch.image.repository }}:{{ .Values.elasticsearch.image.tag }}"
           imagePullPolicy: Always
+          {{- if .Values.openshift.enabled }}
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.elasticsearch.resources | nindent 12 }}
           ports:

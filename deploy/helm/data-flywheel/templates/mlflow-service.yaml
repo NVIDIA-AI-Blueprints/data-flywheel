@@ -7,7 +7,7 @@ metadata:
 spec:
   selector:
     app: {{ .Values.foundationalFlywheelServer.deployments.mlflow.fullnameOverride }}-deployment
-  type: {{ .Values.foundationalFlywheelServer.deployments.mlflow.service.type }}
+  type: {{ include "data-flywheel.serviceType" . }}
   ports:
     - port: {{ .Values.foundationalFlywheelServer.deployments.mlflow.service.port }}
 {{- end }}

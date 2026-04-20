@@ -4,6 +4,67 @@
 
 namespace: "nv-nvidia-blueprint-data-flywheel"
 
+# OpenShift-specific configuration
+openshift:
+  enabled: false  # Set to true to enable OpenShift-compatible deployment
+
+  # Security Context configuration for OpenShift restricted SCC
+  securityContext:
+    # Pod-level security context
+    pod:
+      runAsNonRoot: true
+      # Note: fsGroup is automatically assigned by OpenShift from namespace UID/GID range
+      # Do not set fsGroup explicitly as it conflicts with restricted-v2 SCC
+      seccompProfile:
+        type: RuntimeDefault
+
+    # Container-level security context
+    container:
+      allowPrivilegeEscalation: false
+      runAsNonRoot: true
+      capabilities:
+        drop:
+          - ALL
+
+  # Route configuration for external access
+  routes:
+    enabled: true
+    api:
+      enabled: true
+      host: ""  # Auto-generated if empty
+      tls:
+        enabled: true
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+    mlflow:
+      enabled: true
+      host: ""
+      tls:
+        enabled: true
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+    kibana:
+      enabled: true
+      host: ""
+      tls:
+        enabled: true
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+    flower:
+      enabled: true
+      host: ""
+      tls:
+        enabled: true
+        termination: edge
+        insecureEdgeTerminationPolicy: Redirect
+
+  # Storage class override for OpenShift
+  storageClass: "gp3-csi"
+
+  # Init container image for OpenShift compatibility
+  initContainer:
+    image: "registry.access.redhat.com/ubi8/ubi-minimal:latest"
+
 # Deployment profile settings
 # - For production profile, kibana and Data Flywheel flower server are disabled
 #   For non-production profiles, kibana and Data Flywheel flower server are enabled

@@ -17,12 +17,44 @@ spec:
         app: {{ .Values.redis.fullnameOverride }}-deployment
     spec:
       automountServiceAccountToken: false
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- include "data-flywheel.podSecurityContext" . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.openshift.enabled }}
+        - name: create-redis-data-folder
+          image: {{ .Values.openshift.initContainer.image }}
+          command: ['sh', '-c', 'mkdir -p /data']
+          volumeMounts:
+            - name: redis-data-volume
+              mountPath: /data
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+        {{- else }}
+        - name: create-redis-data-folder
+          image: busybox:1.28
+          command: ['sh', '-c', 'mkdir -p /data && chmod 755 /data']
+          volumeMounts:
+            - name: redis-data-volume
+              mountPath: /data
+        {{- end }}
       containers:
         - name: redis
           image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
           imagePullPolicy: Always
+          {{- if .Values.openshift.enabled }}
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.redis.resources | nindent 12 }}
           ports:
             - containerPort: {{ .Values.redis.service.port }}
+          volumeMounts:
+            - name: redis-data-volume
+              mountPath: /data
+      volumes:
+        - name: redis-data-volume
+          emptyDir: {}
 {{- end }}

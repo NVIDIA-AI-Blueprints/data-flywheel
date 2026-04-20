@@ -7,7 +7,7 @@ metadata:
 spec:
   selector:
     app: {{ .Values.kibana.fullnameOverride }}-deployment
-  type: {{ .Values.kibana.service.type }}
+  type: {{ include "data-flywheel.serviceType" . }}
   ports:
     - name: http
       port: {{ .Values.kibana.service.port }}

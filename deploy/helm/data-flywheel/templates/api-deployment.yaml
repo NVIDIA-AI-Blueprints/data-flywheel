@@ -20,18 +20,37 @@ spec:
       imagePullSecrets:
         {{- toYaml . | nindent 8 }}
       {{- end }}
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- include "data-flywheel.podSecurityContext" . | nindent 8 }}
+      {{- end }}
       automountServiceAccountToken: false
       initContainers:
+        {{- if .Values.openshift.enabled }}
+        - name: create-data-folder-for-dataset
+          image: {{ .Values.openshift.initContainer.image }}
+          command: ['sh', '-c', 'mkdir -p /data']
+          volumeMounts:
+            - name: data-volume
+              mountPath: /data
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+        {{- else }}
         - name: create-data-folder-for-dataset
           image: busybox:1.28
           command: ['sh', '-c', 'mkdir -p /data && chmod 755 /data']
           volumeMounts:
             - name: data-volume
               mountPath: /data
+        {{- end }}
       containers:
         - name: api
           image: "{{ .Values.foundationalFlywheelServer.image.repository }}:{{ .Values.foundationalFlywheelServer.image.tag }}"
           imagePullPolicy: Always
+          {{- if .Values.openshift.enabled }}
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.foundationalFlywheelServer.deployments.api.resources | nindent 12 }}
           ports:
@@ -49,6 +68,14 @@ spec:
               value: {{ .Values.profile.mlflow.COMPOSE_PROFILES | quote }}
             - name: ES_COLLECTION_NAME
               value: {{ .Values.foundationalFlywheelServer.deployments.api.env.ES_COLLECTION_NAME | quote }}
+            {{- if .Values.openshift.enabled }}
+            - name: HOME
+              value: "/tmp"
+            - name: UV_CACHE_DIR
+              value: "/tmp/.uv-cache"
+            - name: UV_PROJECT_ENVIRONMENT
+              value: "/tmp/.venv"
+            {{- end }}
             - name: NVIDIA_API_KEY
               valueFrom:
                 secretKeyRef:

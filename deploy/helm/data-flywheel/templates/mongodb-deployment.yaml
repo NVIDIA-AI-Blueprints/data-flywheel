@@ -17,12 +17,44 @@ spec:
         app: {{ .Values.mongodb.fullnameOverride }}-deployment
     spec:
       automountServiceAccountToken: false
+      {{- if .Values.openshift.enabled }}
+      securityContext:
+        {{- include "data-flywheel.podSecurityContext" . | nindent 8 }}
+      {{- end }}
+      initContainers:
+        {{- if .Values.openshift.enabled }}
+        - name: create-mongodb-data-folder
+          image: {{ .Values.openshift.initContainer.image }}
+          command: ['sh', '-c', 'mkdir -p /data/db']
+          volumeMounts:
+            - name: mongodb-data-volume
+              mountPath: /data/db
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+        {{- else }}
+        - name: create-mongodb-data-folder
+          image: busybox:1.28
+          command: ['sh', '-c', 'mkdir -p /data/db && chmod 755 /data/db']
+          volumeMounts:
+            - name: mongodb-data-volume
+              mountPath: /data/db
+        {{- end }}
       containers:
         - name: mongodb
           image: "{{ .Values.mongodb.image.repository }}:{{ .Values.mongodb.image.tag }}"
           imagePullPolicy: Always
+          {{- if .Values.openshift.enabled }}
+          securityContext:
+            {{- include "data-flywheel.containerSecurityContext" . | nindent 12 }}
+          {{- end }}
           resources:
             {{- toYaml .Values.mongodb.resources | nindent 12 }}
           ports:
             - containerPort: {{ .Values.mongodb.service.port }}
+          volumeMounts:
+            - name: mongodb-data-volume
+              mountPath: /data/db
+      volumes:
+        - name: mongodb-data-volume
+          emptyDir: {}
 {{- end }}
